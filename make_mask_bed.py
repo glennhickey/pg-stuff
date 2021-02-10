@@ -34,7 +34,7 @@ def main():
         local_path = os.path.join(options.workDir, event + '.bed')
         cp_cmd = ['cp', bed_path, local_path]
         if  bed_path.startswith('s3://'):
-            cp_cmd = ['aws', 's3'] + cp_cmd
+            cp_cmd = ['aws', 's3', 'cp', '--quiet'] + cp_cmd[1:]
         subprocess.check_call(cp_cmd)
 
     # merge the bed files, prepending the name
