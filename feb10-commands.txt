@@ -1,0 +1,54 @@
+---
+hg38
+---
+
+cactus-graphmap aws:us-west-2:glennhickey-jobstore-2 ./2020AUG26_seqfile_copy.txt s3://vg-k8s/vgamb/wg/minigraph/GRCh38-freeze1/GRCh38-freeze1.gfa.gz s3://vg-k8s/vgamb/wg/cactus/GRCh38-freeze1/GRCh38-freeze1.origseqs-feb1.paf --realTimeLogging --logFile grap-origseqs.log --batchSystem mesos --provisioner aws --nodeTypes r3.8xlarge:0.7 --maxNodes 20 --defaultPreemptable --betaInertia 0 --targetTime 1 
+
+cactus-preprocess aws:us-west-2:glennhickey-jobstore-2 2020AUG26_seqfile_copy.txt ./GRCh38-freeze1.minigraph.seqfile.softmasked-feb1.txt --brnnCores 8 --realTimeLogging --logFile preprocess.log  --batchSystem mesos --provisioner aws --nodeTypes r3.8xlarge:0.7 --maxNodes 25 --defaultPreemptable --betaInertia 0 --targetTime 1  --maskPAF s3://vg-k8s/vgamb/wg/cactus/GRCh38-freeze1/GRCh38-freeze1.origseqs-feb1.paf --maskAlpha --configFile ./config.xml
+
+cactus-graphmap aws:us-west-2:glennhickey-jobstore-2 ./GRCh38-freeze1.minigraph.seqfile.softmasked-feb1.txt s3://vg-k8s/vgamb/wg/minigraph/GRCh38-freeze1/GRCh38-freeze1.gfa.gz s3://vg-k8s/vgamb/wg/cactus/GRCh38-freeze1/GRCh38-freeze1.softmasked-feb1.paf --maskFilter 100000 --realTimeLogging --logFile grap-softmasked-feb1.log --batchSystem mesos --provisioner aws --nodeTypes r3.8xlarge:0.7 --maxNodes 20  --defaultPreemptable --betaInertia 0 --targetTime 1 --disableProgress
+
+cactus-graphmap-split aws:us-west-2:glennhickey-jobstore-2 ./GRCh38-freeze1.minigraph.seqfile.softmasked-feb1.txt s3://vg-k8s/vgamb/wg/minigraph/GRCh38-freeze1/GRCh38-freeze1.gfa.gz s3://vg-k8s/vgamb/wg/cactus/GRCh38-freeze1/GRCh38-freeze1.softmasked-feb1.paf --refContigs $(for i in $(seq 1 22; echo X; echo Y; echo M); do echo chr$i; done) --reference hg38 --outDir s3://vg-k8s/vgamb/wg/cactus/GRCh38-freeze1/chroms-softmasked-feb1 --maskFilter 100000 --realTimeLogging --logFile graphmap-split.log --batchSystem mesos --provisioner aws --defaultPreemptable --nodeTypes r3.8xlarge:0.7 --maxNodes 20 --betaInertia 0 --targetTime 1 --disableProgress
+
+cactus-align-batch  aws:us-west-2:glennhickey-jobstore-2 ./chromfile.txt s3://vg-k8s/vgamb/wg/cactus/GRCh38-freeze1/align-batch-feb1 --alignCores 32 --alignCoresOverrides chr1,64 chr2,64 chr3,64 chr4,64 chr5,64  --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter 100000" --batchSystem mesos --provisioner aws --defaultPreemptable  --nodeTypes r4.16xlarge:1.5,r4.8xlarge:0.9 --nodeStorage 1000 --maxNodes 5,20 --betaInertia 0 --targetTime 1 --logFile align-batch.feb1.log --realTimeLogging --disableProgress
+
+----
+
+CHM
+
+----
+
+cactus-graphmap aws:us-west-2:glennhickey-jobstore ./2020AUG26_seqfile_copy.txt s3://vg-k8s/vgamb/wg/minigraph/CHM13-freeze1/CHM13-freeze1.gfa.gz s3://vg-k8s/vgamb/wg/cactus/CHM13-freeze1/CHM13-freeze1.origseqs-feb1.paf --realTimeLogging --logFile grap-origseqs.log --batchSystem mesos --provisioner aws --nodeTypes r3.8xlarge:0.7 --maxNodes 20 --defaultPreemptable --betaInertia 0 --targetTime 1  --outputFasta s3://vg-k8s/vgamb/wg/cactus/CHM13-freeze1/CHM13-freeze1.gfa.fa
+
+cactus-preprocess aws:us-west-2:glennhickey-jobstore 2020AUG26_seqfile_copy.nm.txt ./CHM13-freeze1.minigraph.seqfile.softmasked-feb1.nm.txt --brnnCores 8 --realTimeLogging --logFile preprocess.log  --batchSystem mesos --provisioner aws --nodeTypes r3.8xlarge:0.7 --maxNodes 25 --defaultPreemptable --betaInertia 0 --targetTime 1  --maskPAF s3://vg-k8s/vgamb/wg/cactus/CHM13-freeze1/CHM13-freeze1.origseqs-feb1.paf --maskAlpha 
+
+cactus-graphmap aws:us-west-2:glennhickey-jobstore ./CHM13-freeze1.minigraph.seqfile.softmasked-feb1.txt s3://vg-k8s/vgamb/wg/minigraph/CHM13-freeze1/CHM13-freeze1.gfa s3://vg-k8s/vgamb/wg/cactus/CHM13-freeze1/CHM13-freeze1.softmasked-feb1.paf --maskFilter 100000 --realTimeLogging --logFile grap-softmasked-feb1.log --batchSystem mesos --provisioner aws --nodeTypes r3.8xlarge:0.7 --maxNodes 20  --defaultPreemptable --betaInertia 0 --targetTime 1
+
+cactus-graphmap-split aws:us-west-2:glennhickey-jobstore ./CHM13-freeze1.minigraph.seqfile.softmasked-feb1.txt s3://vg-k8s/vgamb/wg/minigraph/CHM13-freeze1/CHM13-freeze1.gfa.gz s3://vg-k8s/vgamb/wg/cactus/CHM13-freeze1/CHM13-freeze1.softmasked-feb1.paf --refContigs $(for i in $(seq 1 22; echo X; echo Y; echo M); do echo chr$i; done) --reference CHM13 --outDir s3://vg-k8s/vgamb/wg/cactus/CHM13-freeze1/chroms-softmasked-feb1 --maskFilter 100000 --realTimeLogging --logFile graphmap-split.log --batchSystem mesos --provisioner aws --defaultPreemptable --nodeTypes r3.8xlarge:0.7 --maxNodes 20 --betaInertia 0 --targetTime 1 
+
+cactus-align-batch  aws:us-west-2:glennhickey-jobstore ./chromfile.txt s3://vg-k8s/vgamb/wg/cactus/CHM13-freeze1/align-batch-feb1 --alignCores 32 --alignCoresOverrides chr1,64 chr2,64 chr3,64 chr4,64 chr5,64  --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter 100000" --batchSystem mesos --provisioner aws --defaultPreemptable  --nodeTypes r4.16xlarge:1.5,r4.8xlarge:0.9 --nodeStorage 1000 --maxNodes 5,20 --betaInertia 0 --targetTime 1 --logFile align-batch.feb1.log --realTimeLogging 
+
+
+#--- gfas made as follows
+
+# regions to clip
+make_mask_bed.py CHM13-freeze1.minigraph.seqfile.softmasked.txt ./work CHM13 > mask.bed
+
+# add regions to clip HG002
+ls *.vg | parallel -j $nrpoc "vg paths -Ev {} -Q HG002. > {}.paths"
+cat *.paths | awk '{print $1 "\t0\t" $2}' > cut.bed
+cat mask.bed cut.bed | bedtools sort -i - | bedtools merge -i - > mask-cut.bed
+
+# do the clipping and renaming (this takes a while due to renaming)
+ls *.vg | parallel -j $nproc "clip-vg {} mask-cut.bed -f -r 'mat>2' -r 'pat>1' -r 'hg38>hg38.0' > {}.clip"
+
+# make the gfa
+vg ids -j *.clip
+ls *.clip | parallel -j $nprog "vg convert -f {} -Q CHM13 -B -w . | pigz -p $nprog > {}.gfa.gz"
+cat *.gfa.gz > CHM13-freeze1.cactus.gfa.gz
+
+# make the vg and gbwt
+gzip -dc CHM13-freeze1.cactus.gfa.gz > CHM13-freeze1.cactus.gfa
+vg gbwt -G CHM13-freeze1.cactus.gfa -g CHM13-freeze1.cactus.gbwt-graph -o CHM13-freeze1.cactus.gbwt
+vg convert -b CHM13-freeze1.cactus.gbwt-graph
+
