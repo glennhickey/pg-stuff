@@ -1,6 +1,5 @@
-#!/bin/python
-
 import sys
+import subprocess
 
 tot_sam_len = {}
 chrom_sam_lens = {}
@@ -28,5 +27,16 @@ for sample in samples:
          for chrom in chrom_sam_lens.keys():
                   l = chrom_sam_lens[chrom][sample] if sample in chrom_sam_lens[chrom] else 0
                   sys.stdout.write("\t{}".format(l))
+
          sys.stdout.write("\t{}\n".format(tot_sam_len[sample]))
                                    
+for chrom in chrom_sam_lens.keys():
+         tsv_name = chrom + '.bc.tsv'
+         with open(tsv_name, 'w') as tsv_file:
+                  for sample in samples:
+                           tsv_file.write(sample)
+                           l = chrom_sam_lens[chrom][sample] if sample in chrom_sam_lens[chrom] else 0
+                           tsv_file.write("\t{}\n".format(l))
+         subprocess.check_call(['python', 'barchart.py', tsv_name, '--save', tsv_name + '.png',
+                                '--x_sideways', '--width', '16', '--height', '16', '--title', chrom.split('.')[0]])
+         
