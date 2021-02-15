@@ -5,7 +5,7 @@ def load(f):
     with open(f, 'r') as infile:
         for line in infile:
             toks = line.strip().split()
-            if toks:
+            if toks and len(toks) > 1:
                 mat.append(toks)
     return mat
 

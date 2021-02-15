@@ -22,6 +22,10 @@ for i, arg in enumerate(sys.argv[1:]):
                            samples.add(name)
          chrom_sam_lens[arg] = chrom_sam_len
 
+sys.stdout.write("sample")
+for chrom in chrom_sam_lens.keys():
+         sys.stdout.write("\t{}".format(chrom.split('.')[0]))
+         
 for sample in samples:
          sys.stdout.write(sample)
          for chrom in chrom_sam_lens.keys():
