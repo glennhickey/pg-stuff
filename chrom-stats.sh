@@ -40,7 +40,7 @@ ls *.vg | parallel -j $NPROC "vg stats -lz {} > {}.stats.tsv"
 ls *.vg | parallel -j $NPROC "vg paths -cv {} > {}.coverage.tsv"
 
 # get the binned path coverage
-ls *.vg | parallel -j $NPROC "vg depth {} -b 1000 > {}.coverage.bed"
+#ls *.vg | parallel -j $NPROC "vg depth {} -b 1000 > {}.coverage.bed"
 
 # append some path stats
 for i in *.vg ; do printf "paths\t" >> ${i}.stats.tsv ; cat ${i}.paths.tsv | wc -l >> ${i}.stats.tsv ; done
