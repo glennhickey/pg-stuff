@@ -12,3 +12,6 @@ ls *.vg | parallel -j $NPROC "clip-vg {} -e hg38 -u $MASK_LEN -f -r 'mat>2' -r '
 
 # for a CHM13 reference:
 #ls *.vg | parallel -j $NPROC "clip-vg {} -e CHM13 -u $MASK_LEN -f -r 'mat>2' -r 'pat>1' -r 'hg38>hg38.0' > {}.clip"
+
+# validate them
+ls *.vg.clip | parallel -j $NPROC "vg validate {}"
