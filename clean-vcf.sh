@@ -13,10 +13,10 @@ THREADS=20
 rtg format $REF -o ${REF}.sdf
 
 # first we split out the big variants
-bcftools view $VCF -i "STRLEN(REF)>${LEN} || STRLEN(ALT)>${LEN}" | sed -e "s/${PREFIX}.//g" | bgzip --threads ${THREADS} > big.vcf.gz
+bcftools annotate -x "INFO/AF,INFO/AC" $VCF -i "STRLEN(REF)>${LEN} || STRLEN(ALT)>${LEN}" | sed -e "s/${PREFIX}.//g" | bgzip --threads ${THREADS} > big.vcf.gz
 
 # then we decompose the small variants
-bcftools view $VCF -e "STRLEN(REF)>${LEN} || STRLEN(ALT)>${LEN}" | sed -e "s/${PREFIX}.//g" | rtg vcfdecompose -i - -t ${REF}.sdf --break-indels --break-mnps -o small.dc.vcf.gz
+bcftools annotate -x "INFO/AF,INFO/AC" $VCF -e "STRLEN(REF)>${LEN} || STRLEN(ALT)>${LEN}" | sed -e "s/${PREFIX}.//g" | rtg vcfdecompose -i - -t ${REF}.sdf --break-indels --break-mnps -o small.dc.vcf.gz
 
 # then we make a merged vcf
 bcftools view small.dc.vcf.gz > temp.vcf
