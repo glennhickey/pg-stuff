@@ -2,25 +2,34 @@
 
 set -xe
 
-#example ./clean-vcf.sh cactus.vcf.gz GRCh38 1000 hg38.fa
+#example ./clean-vcf.sh cactus.vcf.gz 1000 hg38.fa
 VCF=$1
-PREFIX=$2
-LEN=$3
-REF=$4
+LEN=$2
+REF=$3
 THREADS=8
 
-# make the sdf
+# make the sdf out of the fasta reference
 rm -rf ${REF}.sdf
 rtg format $REF -o ${REF}.sdf
 
-# then decompose the small variants
-RES1=${VCF::-7}.decomposed.max${LEN}.not.normalized.vcf.gz
-rm -rf ${RES1} ${RES1}.tbi
-bcftools annotate -x "INFO/AF,INFO/AC" $VCF -e "STRLEN(REF)>${LEN} || STRLEN(ALT)>${LEN}" | sed -e "s/${PREFIX}.//g" | rtg vcfdecompose -i - -t ${REF}.sdf --break-indels --break-mnps -o ${RES1}
+# filter out big alleles.  also remove info fields that will be corrupted by decompose, and strip chrom prefixes
+RES1=${VCF::-7}.decomposed.max${LEN}.temp1.vcf.gz
+bcftools annotate -x "INFO/AF,INFO/AC" $VCF -e "STRLEN(REF)>${LEN} || STRLEN(ALT)>${LEN}" | sed -e "s/GRCh38.//g" -e "s/CHM13.//g" | bgzip --threads $THREADS > $RES1
+tabix -fp vcf $RES1
+
+# strip out nested variants
+RES2=${VCF::-7}.decomposed.max${LEN}.temp2.vcf.gz
+./strip-nested.py $RES1 | bgzip --threads $THREADS > $RES2
+tabix -fp vcf $RES2
+
+# then decompose the remaining variants
+RES3=${VCF::-7}.decomposed.max${LEN}.temp3.vcf.gz
+rm -rf ${RES3} ${RES3}.tbi
+rtg vcfdecompose -i $RES2 -t ${REF}.sdf --break-indels --break-mnps -o ${RES3}
 
 # then we normalize and sort
-RES2=${VCF::-7}.decomposed.max${LEN}.vcf.gz
-bcftools norm --rm-dup all -f $REF ${RES1} | bcftools sort - | bgzip --threads $THREADS > $RES2
-tabix -fp vcf $RES2
+RES4=${VCF::-7}.decomposed.max${LEN}.vcf.gz
+bcftools norm --rm-dup all -f $REF ${RES3} | bcftools sort - | bgzip --threads $THREADS > $RES4
+tabix -fp vcf $RES4
 
 
