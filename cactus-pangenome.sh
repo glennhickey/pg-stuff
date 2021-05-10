@@ -42,7 +42,7 @@ usage() {
 	 printf "   -c CONFIG      Cactus configuration file (applied to all commands)\n"
 	 printf "Workflow Options:\n"
 	 printf "   -p PHASE       Resume workflow starting with given phase {map, split, align, join}\n"
-	 printf "   -M MASK        Don't align softmasked sequence stretches greater than MASK [default = 100000]\n"	 
+	 printf "   -M MASK        Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"	 
     exit 1
 }
 
@@ -115,6 +115,10 @@ fi
 
 if [[ $CONFIG != "" ]]; then
 	 TOIL_OPTS=${TOIL_OPTS --configFile $CONFIG}
+fi
+
+if [[ $MASK_LEN == "0" ]]; then
+	 MASK_LEN=4000000000
 fi
 
 date
