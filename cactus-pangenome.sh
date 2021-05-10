@@ -131,7 +131,7 @@ fi
 
 if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" || phase == "align" ]]; then
 	 aws s3 cp ${OUTPUT_BUCKET}/chroms/chromfile.txt ./chromfile-${OUTPUT_NAME}.txt
-	 aws s3 sync ${OUTPUT_BUCKET}/chroms/seqfiles ./seqfiles=${OUTPUT_NAME}.txt 
+	 aws s3 sync ${OUTPUT_BUCKET}/chroms/seqfiles ./seqfiles-${OUTPUT_NAME}.txt 
 	 sed -i -e 's/seqfiles/seqfiles-${OUTPUT_NAME}/g' ./chromfile-${OUTPUT_NAME}.txt
 
 	 cactus-align-batch $JOBSTORE ./chromfile-${OUTPUT_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --pafMaskFilter ${MASK_LEN} --barMaskFilter ${MASK_LEN} --acyclic ${REFERENCE}" --logFile ${OUTPUT_NAME}.align.log ${TOIL_OPTS} ${TOIL_R3_OPTS} 
