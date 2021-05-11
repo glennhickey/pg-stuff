@@ -126,7 +126,7 @@ date
 set -ex
 
 if [[ $PHASE == "" || $PHASE == "map" ]]; then
-	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
+	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa --refFromGFA $REFERENCE --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
 fi
 
 if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" ]]; then
