@@ -129,6 +129,7 @@ set -ex
 if [[ $PHASE == "" || $PHASE == "map" ]]; then
 	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa --refFromGFA $REFERENCE --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
+	 aws s3 cp $SEQFILE ${OUTPUT_BUCKET}/
 fi
 
 # phase 2: divide fasta and PAF into chromosomes
@@ -136,6 +137,8 @@ if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" ]]; then
 	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs "${REFCONTIGS}" --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME} --logFile ${OUTPUT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 fi
+
+REFCONTIGS="${REFCONTIGS} chrOther"
 
 # phase 3: align each chromosome with Cactus, producing output in both HAL and vg
 if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" || phase == "align" ]]; then
