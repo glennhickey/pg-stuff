@@ -155,9 +155,9 @@ if [[ $DECOY != "" ]]; then
 	 JOIN_OPTS="--decoyGraph ${DECOY} ${JOIN_OPTS}"
 fi
 if [[ $REFERENCE == "CHM13" ]]; then
-	 JOIN_OPTS="--rename \"GRCh38>GRCh38.0\" ${JOIN_OPTS}"
+	 JOIN_OPTS="--rename GRCh38>GRCh38.0 ${JOIN_OPTS}"
 else
-	 JOIN_OPTS="--rename \"CHM13>CHM13.0\" ${JOIN_OPTS}"
+	 JOIN_OPTS="--rename CHM13>CHM13.0 ${JOIN_OPTS}"
 fi
 
 VGFILES=""
