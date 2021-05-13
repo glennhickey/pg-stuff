@@ -114,7 +114,7 @@ else
 fi
 
 if [[ $CONFIG != "" ]]; then
-	 TOIL_OPTS=${TOIL_OPTS --configFile $CONFIG}
+	 TOIL_OPTS="${TOIL_OPTS} --configFile $CONFIG"
 fi
 
 if [[ $MASK_LEN == "0" ]]; then
