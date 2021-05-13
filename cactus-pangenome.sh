@@ -25,7 +25,7 @@ TOIL_OPTS="--batchSystem mesos --provisioner aws --defaultPreemptable --betaIner
 # jobs get run on r3 clusters
 TOIL_R3_OPTS="--nodeTypes r3.8xlarge:0.7 --maxNodes 25"
 # except join, which needs a little more RAM for the whole-genome indexing
-TOIL_JOIN_OPTS="--nodeTypes r5.16xlarge:2.5 --maxNodes 1 --nodeStorage 2000"
+TOIL_JOIN_OPTS="--nodeTypes r5.16xlarge --maxNodes 1 --nodeStorage 2000"
 
 usage() {
     # Print usage to stderr
