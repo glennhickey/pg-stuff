@@ -160,8 +160,17 @@ else
 	 JOIN_OPTS="--rename \"CHM13>CHM13.0\" ${JOIN_OPTS}"
 fi
 
+VGFILES=""
+for i in $REFCONTIGS
+do VGFILES="${VGFILES} ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME}/${i}.vg"
+done
+HALFILES=""
+for i in $REFCONTIGS
+do HALFILES="${HALFILES} ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME}/${i}.hal"
+done
+
 # phase 4: merge the chromosome output into whole genome HAL, GFA, VCF, XG, SNARLS and GBWT
-cactus-graphmap-join $JOBSTORE --outDir $OUTPUT_BUCKET --outName $OUTPUT_NAME --reference $REFERENCE  $JOIN_OPTS --vg $(for i in $REFCONTIGS; do echo ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME}/${i}.vg) --hal $(for i in $REFCONTIGS; do echo ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME}/${i}.hal) --logFile ${OUTPUT_NAME}.join.log ${TOIL_OPTS} ${TOIL_JOIN_OPTS}
+cactus-graphmap-join $JOBSTORE --outDir $OUTPUT_BUCKET --outName $OUTPUT_NAME --reference $REFERENCE  $JOIN_OPTS --vg $VGFILES --hal $HALFILES --logFile ${OUTPUT_NAME}.join.log ${TOIL_OPTS} ${TOIL_JOIN_OPTS}
 
 aws s3 cp  ${OUTPUT_NAME}.join.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 
