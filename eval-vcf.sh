@@ -8,7 +8,7 @@ CALLS=""
 OUTDIR=""
 TRUTH_SAMPLE=""
 CALLS_SAMPLE=""
-REF="s3://vg-k8s/vgamb/wg/cactus/GRCh38-f1-90/fasta-gap-masked/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz"
+REFERENCE="s3://vg-k8s/vgamb/wg/cactus/GRCh38-f1-90/fasta-gap-masked/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz"
 
 usage() {
     # Print usage to stderr
@@ -54,11 +54,11 @@ if [[ $TRUTH == "" ]]; then
 	 usage
 elif [[ $CALLS == "" ]]; then
 	 printf "Seqfile must be specified with -s\n"
-	 usage
+       usage
 elif [[ $OUTDIR == "" ]]; then
 	 printf "Outdir must be specified with -o\n"
-	 usage	 
-elif [[ $TURH_SAMPLE == "" ]]; then
+       usage	 
+elif [[ $TRUTH_SAMPLE == "" ]]; then
 	 printf "Truth sample must be specified with -a\n"
 	 usage
 elif [[ $CALLS_SAMPLE == "" ]]; then
@@ -69,10 +69,10 @@ fi
 set -ex
 
 # make the vcfeval template
-LOCAL_REF="$(basename $REFERENCE)"
-TEMPLATE="${LOCAL_REF}.sdf"
+LOCAL_REFERENCE="$(basename $REFERENCE)"
+TEMPLATE="${LOCAL_REFERENCE}.sdf"
 
-if [ ! -f "$TEMPLATE" ]; then
+if [ ! -e "$TEMPLATE" ]; then
 	 aws s3 cp $REFERENCE $LOCAL_REFERENCE
 	 rtg format $LOCAL_REFERENCE -o $TEMPLATE
 fi
@@ -81,12 +81,12 @@ fi
 HARD_BED="hard.bed"
 EASY_BED="easy.bed"
 
-if [ ! -f "$HARD_BED"]; then
+if [ ! -f "$HARD_BED" ]; then
 	 wget https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v2.0/GRCh38/union/GRCh38_alldifficultregions.bed.gz
 	 gzip -dc GRCh38_alldifficultregions.bed.gz > $HARD_BED
 fi
 
-if [ ! -f "$EASY_BED"]; then
+if [ ! -f "$EASY_BED" ]; then
 	 wget https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v2.0/GRCh38/union/GRCh38_notinalldifficultregions.bed.gz
 	 gzip -dc GRCh38_notinalldifficultregions.bed.gz > $EASY_BED
 fi
@@ -127,9 +127,9 @@ rtg vcfeval -t $TEMPLATE -b $LOCAL_TRUTH_SAMPLE -c $LOCAL_CALLS_SAMPLE -o ${OUTD
 # do the chromosome eval
 for i in `seq 22`; do
 	 CHROM="chr${i}"
-	 bcftools view -r $CHROM $LOCAL_TRUTH -Oz > ${OUTDIR}/truth_${CHROM}.vcf.gz
+	 bcftools view -r $CHROM $LOCAL_TRUTH_SAMPLE -Oz > ${OUTDIR}/truth_${CHROM}.vcf.gz
 	 tabix -fp vcf ${OUTDIR}/truth_${CHROM}.vcf.gz
-	 bcftools view -r $CHROM $LOCAL_CALLS -Oz > ${OUTDIR}/calls_${CHROM}.vcf.gz
+	 bcftools view -r $CHROM $LOCAL_CALLS_SAMPLE -Oz > ${OUTDIR}/calls_${CHROM}.vcf.gz
 	 tabix -fp vcf ${OUTDIR}/calls_${CHROM}.vcf.gz
 
 	 rm -rf ${OUTDIR}/eval-easy-${CHROM}
@@ -137,6 +137,8 @@ for i in `seq 22`; do
 	 rm -rf ${OUTDIR}/eval-hard-${CHROM}
 	 rtg vcfeval -t $TEMPLATE -b ${OUTDIR}/truth_${CHROM}.vcf.gz -c ${OUTDIR}/calls_${CHROM}.vcf.gz -o ${OUTDIR}/eval-hard-${CHROM} -e $HARD_BED
 done
+
+set +x
 
 # print the results
 echo "Whole genome results"
