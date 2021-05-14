@@ -9,6 +9,7 @@ MINIGRAPH=""
 OUTPUT_BUCKET=""
 OUTPUT_NAME=""
 REFERENCE=""
+VCF_REFERENCE=""
 DECOY=""
 CONFIG=""
 
@@ -32,21 +33,22 @@ usage() {
     exec 1>&2
     printf "Usage: $0 [OPTIONS] -j <JOBSTORE> -s <SEQFILE> -m <MINIGRAPH> -o <OUTPUT-BUCKET> -n <OUTPUT-NAME> -r <REFERENCE> \n"
 	 printf "I/O Options:\n"
-	 printf "   -j JOBSTORE    Use the given jobstore.  ex: aws:us-west-2:my-job-store\n"
-	 printf "   -s SEQFILE     Cactus input seqfile.  Ideally, preprocessed.  Must be local (not S3) \n"
-	 printf "   -m MINIGRAPH   Use this minigraph. ex: ftp://ftp.dfci.harvard.edu/pub/hli/minigraph/HPRC-f1/GRCh38-f1-90.gfa.gz \n"	 
-	 printf "   -o OUTPUT      Output bucket.  ex: s3://cactus-output/GRCh38-pangenome\n"
-	 printf "   -n NAME        Output name.  All output files will be prefixed with this name\n"
-	 printf "   -r REFERENCE   Reference genome name.  This must be present in the SEQFILE.  ex: GRCh38\n"
-	 printf "   -d DECOY       Path to graph of decoy sequences\n"
-	 printf "   -c CONFIG      Cactus configuration file (applied to all commands)\n"
+	 printf "   -j JOBSTORE       Use the given jobstore.  ex: aws:us-west-2:my-job-store\n"
+	 printf "   -s SEQFILE        Cactus input seqfile.  Ideally, preprocessed.  Must be local (not S3) \n"
+	 printf "   -m MINIGRAPH      Use this minigraph. ex: ftp://ftp.dfci.harvard.edu/pub/hli/minigraph/HPRC-f1/GRCh38-f1-90.gfa.gz \n"	 
+	 printf "   -o OUTPUT         Output bucket.  ex: s3://cactus-output/GRCh38-pangenome\n"
+	 printf "   -n NAME           Output name.  All output files will be prefixed with this name\n"
+	 printf "   -r REFERENCE      Reference genome name.  This must be present in the SEQFILE.  ex: GRCh38\n"
+	 printf "   -v VCF_REFERENCE  Reference genome name for VCF export (is REFERENCE by default)\n"
+	 printf "   -d DECOY          Path to graph of decoy sequences\n"
+	 printf "   -c CONFIG         Cactus configuration file (applied to all commands)\n"
 	 printf "Workflow Options:\n"
-	 printf "   -p PHASE       Resume workflow starting with given phase {map, split, align, join}\n"
-	 printf "   -M MASK        Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"	 
+	 printf "   -p PHASE          Resume workflow starting with given phase {map, split, align, join}\n"
+	 printf "   -M MASK           Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"	 
     exit 1
 }
 
-while getopts "j:s:m:o:n:r:d:c:p:M:" o; do
+while getopts "j:s:m:o:n:r:v:d:c:p:M:" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -65,6 +67,9 @@ while getopts "j:s:m:o:n:r:d:c:p:M:" o; do
 				;;
 		  r)
 				REFERENCE=${OPTARG}
+				;;
+		  v)
+				VCF_REFERENCE=${OPTARG}
 				;;
 		  d)
 				DECOY=${OPTARG}
@@ -127,7 +132,7 @@ set -ex
 
 # phase 1: map contigs to minigraph
 if [[ $PHASE == "" || $PHASE == "map" ]]; then
-	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa --refFromGFA $REFERENCE --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
+	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa  --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 	 aws s3 cp $SEQFILE ${OUTPUT_BUCKET}/
 fi
@@ -160,6 +165,11 @@ else
 	 JOIN_OPTS="--rename CHM13>CHM13.0 ${JOIN_OPTS}"
 fi
 
+if [[ $VCF_REFERENCE != "" ]]; then
+    JOIN_OPTS="--vcfReference $VCF_REFERENCE ${JOIN_OPTS}"
+fi
+
+set +x
 VGFILES=""
 for i in $REFCONTIGS
 do VGFILES="${VGFILES} ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME}/${i}.vg"
@@ -168,9 +178,10 @@ HALFILES=""
 for i in $REFCONTIGS
 do HALFILES="${HALFILES} ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME}/${i}.hal"
 done
+set -x
 
 # phase 4: merge the chromosome output into whole genome HAL, GFA, VCF, XG, SNARLS and GBWT
-cactus-graphmap-join $JOBSTORE --outDir $OUTPUT_BUCKET --outName $OUTPUT_NAME --reference $REFERENCE  $JOIN_OPTS --vg $VGFILES --hal $HALFILES --logFile ${OUTPUT_NAME}.join.log ${TOIL_OPTS} ${TOIL_JOIN_OPTS}
+cactus-graphmap-join $JOBSTORE --outDir $OUTPUT_BUCKET --outName $OUTPUT_NAME --reference $REFERENCE $JOIN_OPTS --vg $VGFILES --hal $HALFILES --logFile ${OUTPUT_NAME}.join.log ${TOIL_OPTS} ${TOIL_JOIN_OPTS}
 
 aws s3 cp  ${OUTPUT_NAME}.join.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 
