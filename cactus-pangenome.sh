@@ -132,18 +132,20 @@ set -ex
 
 # phase 1: map contigs to minigraph
 if [[ $PHASE == "" || $PHASE == "map" ]]; then
-	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa  --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
+	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa  --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 	 aws s3 cp $SEQFILE ${OUTPUT_BUCKET}/
 fi
 
 # phase 2: divide fasta and PAF into chromosomes
 if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" ]]; then
-	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME} --logFile ${OUTPUT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
+	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME} --logFile ${OUTPUT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 fi
 
-REFCONTIGS="${REFCONTIGS} chrOther"
+if [[ $REFERENCE == "GRCh38" ]]; then
+    REFCONTIGS="${REFCONTIGS} chrOther"
+fi
 
 # phase 3: align each chromosome with Cactus, producing output in both HAL and vg
 if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" ]]; then
@@ -151,7 +153,7 @@ if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" 
 	 aws s3 sync ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/seqfiles ./seqfiles-${OUTPUT_NAME} 
 	 sed -i -e "s/seqfiles/seqfiles-${OUTPUT_NAME}/g" ./chromfile-${OUTPUT_NAME}.txt
 
-	 cactus-align-batch $JOBSTORE ./chromfile-${OUTPUT_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --pafMaskFilter ${MASK_LEN} --barMaskFilter ${MASK_LEN} --reference ${REFERENCE}" --logFile ${OUTPUT_NAME}.align.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
+	 cactus-align-batch $JOBSTORE ./chromfile-${OUTPUT_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE}" --logFile ${OUTPUT_NAME}.align.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
 	 aws s3 cp  ${OUTPUT_NAME}.align.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 fi
 
