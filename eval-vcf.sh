@@ -149,7 +149,7 @@ tail -1 ${OUTDIR}/eval-hard/summary.txt
 echo "Easy (by chrom)"
 for i in `seq 22`; do
 	 printf "chr${i}\t"
-	 tail -1 ${OUTDIR}/eval-easy-chr{$i}/summary.txt
+	 tail -1 ${OUTDIR}/eval-easy-chr${i}/summary.txt
 done
 echo "Hard (by chrom)"
 for i in `seq 22`; do
