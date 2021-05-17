@@ -143,7 +143,9 @@ if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" ]]; then
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 fi
 
-REFCONTIGS="${REFCONTIGS} chrOther"
+if [[ $REFERENCE == "GRCh38" ]]; then
+    REFCONTIGS="${REFCONTIGS} chrOther"
+fi
 
 # phase 3: align each chromosome with Cactus, producing output in both HAL and vg
 if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" ]]; then
