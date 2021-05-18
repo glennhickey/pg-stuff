@@ -83,12 +83,12 @@ EASY_BED="easy.bed"
 
 if [ ! -f "$HARD_BED" ]; then
 	 wget https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v2.0/GRCh38/union/GRCh38_alldifficultregions.bed.gz
-	 gzip -dc GRCh38_alldifficultregions.bed.gz > $HARD_BED
+	 gzip -dc GRCh38_alldifficultregions.bed.gz | grep -v chrX | grep -v chrY > $HARD_BED
 fi
 
 if [ ! -f "$EASY_BED" ]; then
 	 wget https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/release/genome-stratifications/v2.0/GRCh38/union/GRCh38_notinalldifficultregions.bed.gz
-	 gzip -dc GRCh38_notinalldifficultregions.bed.gz > $EASY_BED
+	 gzip -dc GRCh38_notinalldifficultregions.bed.gz | grep -v chrX | grep -v chrY > $EASY_BED
 fi
 
 # download the truth
