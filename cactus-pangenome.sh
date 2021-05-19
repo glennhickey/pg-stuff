@@ -152,7 +152,10 @@ if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" 
 	 aws s3 cp ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/chromfile.txt ./chromfile-${OUTPUT_NAME}.txt
 	 aws s3 sync ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/seqfiles ./seqfiles-${OUTPUT_NAME} 
 	 sed -i -e "s/seqfiles/seqfiles-${OUTPUT_NAME}/g" ./chromfile-${OUTPUT_NAME}.txt
-
+	 if [[ $REFERENCE == "CHM13" ]]; then
+	     grep -v ^chrOther ./chromfile-${OUTPUT_NAME}.txt > ./chromfile-${OUTPUT_NAME}.txt.temp
+	     mv ./chromfile-${OUTPUT_NAME}.txt.temp ./chromfile-${OUTPUT_NAME}.txt
+	 fi
 	 cactus-align-batch $JOBSTORE ./chromfile-${OUTPUT_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE}" --logFile ${OUTPUT_NAME}.align.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
 	 aws s3 cp  ${OUTPUT_NAME}.align.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 fi
