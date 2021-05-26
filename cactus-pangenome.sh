@@ -160,7 +160,7 @@ if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" 
 	 aws s3 cp  ${OUTPUT_NAME}.align.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 fi
 
-JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 64"
+JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 63"
 if [[ $DECOY != "" ]]; then
 	 JOIN_OPTS="--decoyGraph ${DECOY} ${JOIN_OPTS}"
 fi
