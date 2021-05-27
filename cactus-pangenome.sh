@@ -144,9 +144,9 @@ fi
 
 # phase 2: mask coverage gaps (so bar doesn't try to realign them)
 if [[ $GAP_MASK == "1" ]]; then
-	 MASK_SEQFILE= ${SEQFILE}.${OUTPUT_NAME}.mask
+	 MASK_SEQFILE=${SEQFILE}.${OUTPUT_NAME}.mask
 	 if [[ $PHASE == "" || $PHASE == "mask" ]]; then
-		  cat $SEQFILE | awk -F"\t |/" '{print $1, $NF}' | sed -e 's/s3://g' -e 's/https://g' -e 's/http://g' | awk '{print $1 "\t" "${OUTPUT_BUCKET}/fa-masked-${OUTPUT_NAME}/" $2}' > $MASK_SEQFILE
+		  cat $SEQFILE | tail -n +2 | awk -F"\t |/" '{print $1, $NF}' | sed -e 's/s3://g' -e 's/https://g' -e 's/http://g' | awk -v obucket=${OUTPUT_BUCKET} -v oname=${OUTPUT_NAME} '{print $1 "\t" obucket "/fa-masked-" oname "/" $2}' > $MASK_SEQFILE
 		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${OUTPUT_NAME}.gapmask.log ${TOIL_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN}
 	 fi
 	 SEQFILE=${MASK_SEQFILE}
