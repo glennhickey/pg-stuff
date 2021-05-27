@@ -12,6 +12,7 @@ REFERENCE=""
 VCF_REFERENCE=""
 DECOY=""
 CONFIG=""
+GAP_MASK=""
 
 # Workflow options
 PHASE=""
@@ -43,12 +44,13 @@ usage() {
 	 printf "   -d DECOY          Path to graph of decoy sequences\n"
 	 printf "   -c CONFIG         Cactus configuration file (applied to all commands)\n"
 	 printf "Workflow Options:\n"
-	 printf "   -p PHASE          Resume workflow starting with given phase {map, split, align, join}\n"
-	 printf "   -M MASK           Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"	 
+	 printf "   -p PHASE          Resume workflow starting with given phase {map, mask, split, align, join}\n"
+	 printf "   -M MASK           Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"
+	 printf "   -g                Run gap-masking step to prevent bar for handling large minimizer gaps (clumsy but improves precision)\n"
     exit 1
 }
 
-while getopts "j:s:m:o:n:r:v:d:c:p:M:" o; do
+while getopts "j:s:m:o:n:r:v:d:c:p:M:g" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -82,7 +84,10 @@ while getopts "j:s:m:o:n:r:v:d:c:p:M:" o; do
 				;;
 		  M)
 				MASK_LEN=${OPTARG}
-				;;		  
+				;;
+		  g)
+				GAP_MASK="1"
+				;;
         *)
             usage
             ;;
@@ -137,7 +142,17 @@ if [[ $PHASE == "" || $PHASE == "map" ]]; then
 	 aws s3 cp $SEQFILE ${OUTPUT_BUCKET}/
 fi
 
-# phase 2: divide fasta and PAF into chromosomes
+# phase 2: mask coverage gaps (so bar doesn't try to realign them)
+if [[ $GAP_MASK == "1" ]]; then
+	 MASK_SEQFILE= ${SEQFILE}.${OUTPUT_NAME}.mask
+	 if [[ $PHASE == "" || $PHASE == "mask" ]]; then
+		  cat $SEQFILE | awk -F"\t |/" '{print $1, $NF}' | sed -e 's/s3://g' -e 's/https://g' -e 's/http://g' | awk '{print $1 "\t" "${OUTPUT_BUCKET}/fa-masked-${OUTPUT_NAME}/" $2}' > $MASK_SEQFILE
+		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${OUTPUT_NAME}.gapmask.log ${TOIL_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN}
+	 fi
+	 SEQFILE=${MASK_SEQFILE}
+fi
+
+# phase 3: divide fasta and PAF into chromosomes
 if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" ]]; then
 	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME} --logFile ${OUTPUT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
@@ -147,7 +162,7 @@ if [[ $REFERENCE == "GRCh38" ]]; then
     REFCONTIGS="${REFCONTIGS} chrOther"
 fi
 
-# phase 3: align each chromosome with Cactus, producing output in both HAL and vg
+# phase 4: align each chromosome with Cactus, producing output in both HAL and vg
 if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" ]]; then
 	 aws s3 cp ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/chromfile.txt ./chromfile-${OUTPUT_NAME}.txt
 	 aws s3 sync ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/seqfiles ./seqfiles-${OUTPUT_NAME} 
@@ -185,7 +200,7 @@ do HALFILES="${HALFILES} ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME}/${i}.hal"
 done
 set -x
 
-# phase 4: merge the chromosome output into whole genome HAL, GFA, VCF, XG, SNARLS and GBWT
+# phase 5: merge the chromosome output into whole genome HAL, GFA, VCF, XG, SNARLS and GBWT
 cactus-graphmap-join $JOBSTORE --outDir $OUTPUT_BUCKET --outName $OUTPUT_NAME --reference $REFERENCE $JOIN_OPTS --vg $VGFILES --hal $HALFILES --logFile ${OUTPUT_NAME}.join.log ${TOIL_OPTS} ${TOIL_JOIN_OPTS}
 
 aws s3 cp  ${OUTPUT_NAME}.join.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
