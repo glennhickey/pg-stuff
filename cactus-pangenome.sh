@@ -24,8 +24,10 @@ MASK_LEN=100000
 
 # general toil options
 TOIL_OPTS="--batchSystem mesos --provisioner aws --defaultPreemptable --betaInertia 0 --targetTime 1 --realTimeLogging"
-# jobs get run on r4 clusters (r3 no longer words now that we build abpoa with -march haswell)
-TOIL_R3_OPTS="--nodeTypes r4.8xlarge:1.0 --nodeStorage 600 --maxNodes 25"
+# some jobs get run on r3 clusters
+TOIL_R3_OPTS="--nodeTypes r3.8xlarge:0.7 --maxNodes 25"
+# cactus jobs get run on r4 clusters (r3 no longer words now that we build abpoa with -march haswell)
+TOIL_R4_OPTS="--nodeTypes r4.8xlarge:1.0 --nodeStorage 600 --maxNodes 25"
 # except join, which needs a little more RAM for the whole-genome indexing
 TOIL_JOIN_OPTS="--nodeTypes r5.16xlarge --maxNodes 1 --nodeStorage 2000"
 
@@ -147,7 +149,7 @@ if [[ $GAP_MASK == "1" ]]; then
 	 MASK_SEQFILE=${SEQFILE}.${OUTPUT_NAME}.mask
 	 if [[ $PHASE == "" || $PHASE == "mask" ]]; then
 		  cat $SEQFILE | tail -n +2 | awk -F"\t |/" '{print $1, $NF}' | sed -e 's/s3://g' -e 's/https://g' -e 's/http://g' | awk -v obucket=${OUTPUT_BUCKET} -v oname=${OUTPUT_NAME} '{print $1 "\t" obucket "/fa-masked-" oname "/" $2}' > $MASK_SEQFILE
-		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${OUTPUT_NAME}.gapmask.log ${TOIL_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN}
+		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${OUTPUT_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN}
 	 fi
 	 SEQFILE=${MASK_SEQFILE}
 fi
@@ -171,7 +173,7 @@ if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" 
 	     grep -v ^chrOther ./chromfile-${OUTPUT_NAME}.txt > ./chromfile-${OUTPUT_NAME}.txt.temp
 	     mv ./chromfile-${OUTPUT_NAME}.txt.temp ./chromfile-${OUTPUT_NAME}.txt
 	 fi
-	 cactus-align-batch $JOBSTORE ./chromfile-${OUTPUT_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE}" --logFile ${OUTPUT_NAME}.align.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
+	 cactus-align-batch $JOBSTORE ./chromfile-${OUTPUT_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE}" --logFile ${OUTPUT_NAME}.align.log ${TOIL_OPTS} ${TOIL_R4_OPTS}
 	 aws s3 cp  ${OUTPUT_NAME}.align.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 fi
 
