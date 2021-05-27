@@ -23,8 +23,8 @@ MASK_LEN=100000
 
 # general toil options
 TOIL_OPTS="--batchSystem mesos --provisioner aws --defaultPreemptable --betaInertia 0 --targetTime 1 --realTimeLogging"
-# jobs get run on r3 clusters
-TOIL_R3_OPTS="--nodeTypes r3.8xlarge:0.7 --maxNodes 25"
+# jobs get run on r4 clusters (r3 no longer words now that we build abpoa with -march haswell)
+TOIL_R3_OPTS="--nodeTypes r4.8xlarge:1.0 --nodeStorage 600 --maxNodes 25"
 # except join, which needs a little more RAM for the whole-genome indexing
 TOIL_JOIN_OPTS="--nodeTypes r5.16xlarge --maxNodes 1 --nodeStorage 2000"
 
