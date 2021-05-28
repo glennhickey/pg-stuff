@@ -153,7 +153,7 @@ if [[ $GAP_MASK == "1" ]]; then
 fi
 
 # phase 3: divide fasta and PAF into chromosomes
-if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" ]]; then
+if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" ]]; then
 	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME} --logFile ${OUTPUT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R4_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 fi
@@ -163,7 +163,7 @@ if [[ $REFERENCE == "GRCh38" ]]; then
 fi
 
 # phase 4: align each chromosome with Cactus, producing output in both HAL and vg
-if [[ $PHASE == "" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" ]]; then
+if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" ]]; then
 	 aws s3 cp ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/chromfile.txt ./chromfile-${OUTPUT_NAME}.txt
 	 aws s3 sync ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/seqfiles ./seqfiles-${OUTPUT_NAME} 
 	 sed -i -e "s/seqfiles/seqfiles-${OUTPUT_NAME}/g" ./chromfile-${OUTPUT_NAME}.txt
