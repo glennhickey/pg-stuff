@@ -8,6 +8,7 @@ SEQFILE=""
 MINIGRAPH=""
 OUTPUT_BUCKET=""
 OUTPUT_NAME=""
+ALIGN_NAME=""
 REFERENCE=""
 VCF_REFERENCE=""
 DECOY=""
@@ -39,6 +40,7 @@ usage() {
 	 printf "   -m MINIGRAPH      Use this minigraph. ex: ftp://ftp.dfci.harvard.edu/pub/hli/minigraph/HPRC-f1/GRCh38-f1-90.gfa.gz \n"	 
 	 printf "   -o OUTPUT         Output bucket.  ex: s3://cactus-output/GRCh38-pangenome\n"
 	 printf "   -n NAME           Output name.  All output files will be prefixed with this name\n"
+	 printf "   -a ALIGN-NAME     Output name for cactus-align and everything after (by default, same as -n)\n"
 	 printf "   -r REFERENCE      Reference genome name.  This must be present in the SEQFILE.  ex: GRCh38\n"
 	 printf "   -v VCF_REFERENCE  Reference genome name for VCF export (is REFERENCE by default)\n"
 	 printf "   -d DECOY          Path to graph of decoy sequences\n"
@@ -50,7 +52,7 @@ usage() {
     exit 1
 }
 
-while getopts "j:s:m:o:n:r:v:d:c:p:M:g" o; do
+while getopts "j:s:m:o:n:a:r:v:d:c:p:M:g" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -67,6 +69,9 @@ while getopts "j:s:m:o:n:r:v:d:c:p:M:g" o; do
 		  n)
 				OUTPUT_NAME=${OPTARG}
 				;;
+		  a)
+				ALIGN_NAME=${OPTARG}
+				;;		  
 		  r)
 				REFERENCE=${OPTARG}
 				;;
@@ -162,17 +167,21 @@ if [[ $REFERENCE == "GRCh38" ]]; then
     REFCONTIGS="${REFCONTIGS} chrOther"
 fi
 
+if [[ $ALIGN_NAME == "" ]]; then
+	 ALIGN_NAME=${OUTPUT_NAME}
+fi
+
 # phase 4: align each chromosome with Cactus, producing output in both HAL and vg
 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" ]]; then
-	 aws s3 cp ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/chromfile.txt ./chromfile-${OUTPUT_NAME}.txt
-	 aws s3 sync ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/seqfiles ./seqfiles-${OUTPUT_NAME} 
-	 sed -i -e "s/seqfiles/seqfiles-${OUTPUT_NAME}/g" ./chromfile-${OUTPUT_NAME}.txt
+	 aws s3 cp ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/chromfile.txt ./chromfile-${ALIGN_NAME}.txt
+	 aws s3 sync ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/seqfiles ./seqfiles-${ALIGN_NAME} 
+	 sed -i -e "s/seqfiles/seqfiles-${ALIGN_NAME}/g" ./chromfile-${ALIGN_NAME}.txt
 	 if [[ $REFERENCE == "CHM13" ]]; then
-	     grep -v ^chrOther ./chromfile-${OUTPUT_NAME}.txt > ./chromfile-${OUTPUT_NAME}.txt.temp
-	     mv ./chromfile-${OUTPUT_NAME}.txt.temp ./chromfile-${OUTPUT_NAME}.txt
+	     grep -v ^chrOther ./chromfile-${ALIGN_NAME}.txt > ./chromfile-${ALIGN_NAME}.txt.temp
+	     mv ./chromfile-${ALIGN_NAME}.txt.temp ./chromfile-${ALIGN_NAME}.txt
 	 fi
-	 cactus-align-batch $JOBSTORE ./chromfile-${OUTPUT_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE}" --logFile ${OUTPUT_NAME}.align.log ${TOIL_OPTS} ${TOIL_R4_OPTS}
-	 aws s3 cp  ${OUTPUT_NAME}.align.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
+	 cactus-align-batch $JOBSTORE ./chromfile-${ALIGN_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${ALIGN_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE}" --logFile ${ALIGN_NAME}.align.log ${TOIL_OPTS} ${TOIL_R4_OPTS}
+	 aws s3 cp  ${ALIGN_NAME}.align.log ${OUTPUT_BUCKET}/logs-${ALIGN_NAME}/
 fi
 
 JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 63"
@@ -192,17 +201,17 @@ fi
 set +x
 VGFILES=""
 for i in $REFCONTIGS
-do VGFILES="${VGFILES} ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME}/${i}.vg"
+do VGFILES="${VGFILES} ${OUTPUT_BUCKET}/align-batch-${ALIGN_NAME}/${i}.vg"
 done
 HALFILES=""
 for i in $REFCONTIGS
-do HALFILES="${HALFILES} ${OUTPUT_BUCKET}/align-batch-${OUTPUT_NAME}/${i}.hal"
+do HALFILES="${HALFILES} ${OUTPUT_BUCKET}/align-batch-${ALIGN_NAME}/${i}.hal"
 done
 set -x
 
 # phase 5: merge the chromosome output into whole genome HAL, GFA, VCF, XG, SNARLS and GBWT
-cactus-graphmap-join $JOBSTORE --outDir $OUTPUT_BUCKET --outName $OUTPUT_NAME --reference $REFERENCE $JOIN_OPTS --vg $VGFILES --hal $HALFILES --logFile ${OUTPUT_NAME}.join.log ${TOIL_OPTS} ${TOIL_JOIN_OPTS}
+cactus-graphmap-join $JOBSTORE --outDir $OUTPUT_BUCKET --outName $ALIGN_NAME --reference $REFERENCE $JOIN_OPTS --vg $VGFILES --hal $HALFILES --logFile ${ALIGN_NAME}.join.log ${TOIL_OPTS} ${TOIL_JOIN_OPTS}
 
-aws s3 cp  ${OUTPUT_NAME}.join.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
+aws s3 cp  ${ALIGN_NAME}.join.log ${OUTPUT_BUCKET}/logs-${ALIGN_NAME}/
 
 date
