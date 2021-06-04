@@ -25,8 +25,8 @@ MASK_LEN=100000
 
 # general toil options
 TOIL_OPTS="--batchSystem mesos --provisioner aws --defaultPreemptable --betaInertia 0 --targetTime 1 --realTimeLogging"
-# cactus jobs get run on r4 clusters (r3 no longer words now that we build abpoa with -march haswell)
-TOIL_R4_OPTS="--nodeTypes r4.8xlarge:1.0 --nodeStorage 600 --maxNodes 25"
+# cactus jobs get run on trusty old r3 clusters 
+TOIL_R3_OPTS="--nodeTypes r3.8xlarge:0.63 --maxNodes 25"
 # except join, which needs a little more RAM for the whole-genome indexing
 TOIL_JOIN_OPTS="--nodeTypes r5.16xlarge --maxNodes 1 --nodeStorage 2000"
 
@@ -142,7 +142,7 @@ set -ex
 
 # phase 1: map contigs to minigraph
 if [[ $PHASE == "" || $PHASE == "map" ]]; then
-	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa  --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R4_OPTS} --maskFilter ${MASK_LEN}
+	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa  --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 	 aws s3 cp $SEQFILE ${OUTPUT_BUCKET}/
 fi
@@ -152,14 +152,14 @@ if [[ $GAP_MASK == "1" ]]; then
 	 MASK_SEQFILE=${SEQFILE}.${OUTPUT_NAME}.mask
 	 if [[ $PHASE == "" || $PHASE == "mask" ]]; then
 		  cat $SEQFILE | tail -n +2 | awk -F"\t |/" '{print $1, $NF}' | sed -e 's/s3://g' -e 's/https://g' -e 's/http://g' | awk -v obucket=${OUTPUT_BUCKET} -v oname=${OUTPUT_NAME} '{print $1 "\t" obucket "/fa-masked-" oname "/" $2}' > $MASK_SEQFILE
-		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${OUTPUT_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R4_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN}
+		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${OUTPUT_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN}
 	 fi
 	 SEQFILE=${MASK_SEQFILE}
 fi
 
 # phase 3: divide fasta and PAF into chromosomes
 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" ]]; then
-	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME} --logFile ${OUTPUT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R4_OPTS} --maskFilter ${MASK_LEN}
+	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME} --logFile ${OUTPUT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 fi
 
@@ -180,7 +180,7 @@ if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" |
 	     grep -v ^chrOther ./chromfile-${ALIGN_NAME}.txt > ./chromfile-${ALIGN_NAME}.txt.temp
 	     mv ./chromfile-${ALIGN_NAME}.txt.temp ./chromfile-${ALIGN_NAME}.txt
 	 fi
-	 cactus-align-batch $JOBSTORE ./chromfile-${ALIGN_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${ALIGN_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE} --retryCount 0" --logFile ${ALIGN_NAME}.align.log ${TOIL_OPTS} ${TOIL_R4_OPTS}
+	 cactus-align-batch $JOBSTORE ./chromfile-${ALIGN_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${ALIGN_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE} --retryCount 0" --logFile ${ALIGN_NAME}.align.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
 	 aws s3 cp  ${ALIGN_NAME}.align.log ${OUTPUT_BUCKET}/logs-${ALIGN_NAME}/
 fi
 
