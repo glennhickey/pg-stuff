@@ -14,6 +14,8 @@ VCF_REFERENCE=""
 DECOY=""
 CONFIG=""
 GAP_MASK=""
+CHM13_Y=""
+NORMALIZE_ITERATIONS="0"
 
 # Workflow options
 PHASE=""
@@ -49,10 +51,12 @@ usage() {
 	 printf "   -p PHASE          Resume workflow starting with given phase {map, mask, split, align, join}\n"
 	 printf "   -M MASK           Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"
 	 printf "   -g                Run gap-masking step to prevent bar for handling large minimizer gaps (clumsy but improves precision)\n"
+	 printf "   -y                Assume CHM13 has chrY\n"
+	 printf "   -N ITERATIONS     Normalize N interations with vg\n"
     exit 1
 }
 
-while getopts "j:s:m:o:n:a:r:v:d:c:p:M:g" o; do
+while getopts "j:s:m:o:n:a:r:v:d:c:p:M:gyN:" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -93,6 +97,13 @@ while getopts "j:s:m:o:n:a:r:v:d:c:p:M:g" o; do
 		  g)
 				GAP_MASK="1"
 				;;
+		  y)
+				CHM13_Y="1"
+				;;
+		  N)
+				NORMALIZE_ITERATIONS=${OPTARG}
+				;;
+		
         *)
             usage
             ;;
@@ -124,6 +135,9 @@ fi
 
 if [[ $REFERENCE == "CHM13" ]]; then
 	 REFCONTIGS="chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrM"
+	 if [[ $CHM13_Y == "1" ]]; then
+	 	REFCONTIGS="${REFCONTIGS} chrY"
+	 fi
 else
 	 REFCONTIGS="chr1 chr2 chr3 chr4 chr5 chr6 chr7 chr8 chr9 chr10 chr11 chr12 chr13 chr14 chr15 chr16 chr17 chr18 chr19 chr20 chr21 chr22 chrX chrY chrM"
 fi
@@ -184,7 +198,7 @@ if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" |
 	 aws s3 cp  ${ALIGN_NAME}.align.log ${OUTPUT_BUCKET}/logs-${ALIGN_NAME}/
 fi
 
-JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 63"
+JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 63 --normalizeIterations ${NORMALIZE_ITERATIONS}"
 if [[ $DECOY != "" ]]; then
 	 JOIN_OPTS="--decoyGraph ${DECOY} ${JOIN_OPTS}"
 fi
