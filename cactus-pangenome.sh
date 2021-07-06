@@ -29,6 +29,7 @@ MASK_LEN=100000
 TOIL_OPTS="--batchSystem mesos --provisioner aws --defaultPreemptable --betaInertia 0 --targetTime 1 --realTimeLogging"
 # cactus jobs get run on trusty old r3 clusters 
 TOIL_R3_OPTS="--nodeTypes r3.8xlarge:0.63 --maxNodes 25"
+TOIL_R4_OPTS="--nodeTypes r5.8xlarge:1.26 --maxNodes 25 --nodeStorage 1000"
 # except join, which needs a little more RAM for the whole-genome indexing
 TOIL_JOIN_OPTS="--nodeTypes r5.16xlarge --maxNodes 1 --nodeStorage 2000"
 
@@ -194,7 +195,7 @@ if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" |
 	     grep -v ^chrOther ./chromfile-${ALIGN_NAME}.txt > ./chromfile-${ALIGN_NAME}.txt.temp
 	     mv ./chromfile-${ALIGN_NAME}.txt.temp ./chromfile-${ALIGN_NAME}.txt
 	 fi
-	 cactus-align-batch $JOBSTORE ./chromfile-${ALIGN_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${ALIGN_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE} --retryCount 0" --logFile ${ALIGN_NAME}.align.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
+	 cactus-align-batch $JOBSTORE ./chromfile-${ALIGN_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${ALIGN_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE} --retryCount 0" --logFile ${ALIGN_NAME}.align.log ${TOIL_OPTS} ${TOIL_R4_OPTS}
 	 aws s3 cp  ${ALIGN_NAME}.align.log ${OUTPUT_BUCKET}/logs-${ALIGN_NAME}/
 fi
 
