@@ -9,13 +9,16 @@ MINIGRAPH=""
 OUTPUT_BUCKET=""
 OUTPUT_NAME=""
 ALIGN_NAME=""
+JOIN_NAME=""
 REFERENCE=""
 VCF_REFERENCE=""
 DECOY=""
 CONFIG=""
+HEADER_TABLE=""
 GAP_MASK=""
 CHM13_Y=""
 NORMALIZE_ITERATIONS="0"
+GFAFFIX="0"
 
 # Workflow options
 PHASE=""
@@ -44,20 +47,23 @@ usage() {
 	 printf "   -o OUTPUT         Output bucket.  ex: s3://cactus-output/GRCh38-pangenome\n"
 	 printf "   -n NAME           Output name.  All output files will be prefixed with this name\n"
 	 printf "   -a ALIGN-NAME     Output name for cactus-align and everything after (by default, same as -n)\n"
+	 printf "   -J JOIN-NAME      Output name for cactus-graphmap-join (by default, same as -a)\n"
 	 printf "   -r REFERENCE      Reference genome name.  This must be present in the SEQFILE.  ex: GRCh38\n"
 	 printf "   -v VCF_REFERENCE  Reference genome name for VCF export (is REFERENCE by default)\n"
 	 printf "   -d DECOY          Path to graph of decoy sequences\n"
 	 printf "   -c CONFIG         Cactus configuration file (applied to all commands)\n"
+	 printf "   -H header-table   Contig header table (made with cactus-preprocess --fastaHeaderTable)\n"
 	 printf "Workflow Options:\n"
 	 printf "   -p PHASE          Resume workflow starting with given phase {map, mask, split, align, join}\n"
 	 printf "   -M MASK           Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"
 	 printf "   -g                Run gap-masking step to prevent bar for handling large minimizer gaps (clumsy but improves precision)\n"
 	 printf "   -y                Assume CHM13 has chrY\n"
 	 printf "   -N ITERATIONS     Normalize N interations with vg\n"
+	 printf "   -F                Run GFAffix normalization\n"
     exit 1
 }
 
-while getopts "j:s:m:o:n:a:r:v:d:c:p:M:gyN:" o; do
+while getopts "j:s:m:o:n:a:J:r:v:d:c:H:p:M:gyN:F" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -76,7 +82,10 @@ while getopts "j:s:m:o:n:a:r:v:d:c:p:M:gyN:" o; do
 				;;
 		  a)
 				ALIGN_NAME=${OPTARG}
-				;;		  
+				;;
+		  J)
+				JOIN_NAME=${OPTARG}
+				;;
 		  r)
 				REFERENCE=${OPTARG}
 				;;
@@ -88,7 +97,10 @@ while getopts "j:s:m:o:n:a:r:v:d:c:p:M:gyN:" o; do
 				;;
 		  c)
 				CONFIG=${OPTARG}
-				;;		  
+				;;
+		  H)
+				HEADER_TABLE=${OPTARG}
+				;;
 		  p)
 				PHASE=${OPTARG}
 				;;
@@ -104,7 +116,9 @@ while getopts "j:s:m:o:n:a:r:v:d:c:p:M:gyN:" o; do
 		  N)
 				NORMALIZE_ITERATIONS=${OPTARG}
 				;;
-		
+		  F)
+				GFAFFIX="1"
+				;;
         *)
             usage
             ;;
@@ -151,13 +165,20 @@ if [[ $MASK_LEN == "0" ]]; then
 	 MASK_LEN=4000000000
 fi
 
+# toggle between stable coordinates / phony minigraph event
+if [[ $HEADER_TABLE != "" ]]; then
+	 GM_OPTS="--fastaHeaderTable ${HEADER_TABLE}"
+else
+	 GM_OPTS="--outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa"
+fi
+
 date
 
 set -ex
 
 # phase 1: map contigs to minigraph
 if [[ $PHASE == "" || $PHASE == "map" ]]; then
-	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa  --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
+	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 	 aws s3 cp $SEQFILE ${OUTPUT_BUCKET}/
 fi
@@ -199,6 +220,10 @@ if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" |
 	 aws s3 cp  ${ALIGN_NAME}.align.log ${OUTPUT_BUCKET}/logs-${ALIGN_NAME}/
 fi
 
+if [[ $JOIN_NAME == "" ]]; then
+	 JOIN_NAME=${ALIGN_NAME}
+fi
+
 JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 63 --normalizeIterations ${NORMALIZE_ITERATIONS}"
 if [[ $DECOY != "" ]]; then
 	 JOIN_OPTS="--decoyGraph ${DECOY} ${JOIN_OPTS}"
@@ -211,6 +236,9 @@ fi
 
 if [[ $VCF_REFERENCE != "" ]]; then
     JOIN_OPTS="--vcfReference $VCF_REFERENCE ${JOIN_OPTS}"
+fi
+if [[ $GFAFFIX == "1" ]]; then
+    JOIN_OPTS="--gfaffix ${JOIN_OPTS}"
 fi
 
 set +x
@@ -225,8 +253,8 @@ done
 set -x
 
 # phase 5: merge the chromosome output into whole genome HAL, GFA, VCF, XG, SNARLS and GBWT
-cactus-graphmap-join $JOBSTORE --outDir $OUTPUT_BUCKET --outName $ALIGN_NAME --reference $REFERENCE $JOIN_OPTS --vg $VGFILES --hal $HALFILES --logFile ${ALIGN_NAME}.join.log ${TOIL_OPTS} ${TOIL_JOIN_OPTS}
+cactus-graphmap-join $JOBSTORE --outDir $OUTPUT_BUCKET --outName $JOIN_NAME --reference $REFERENCE $JOIN_OPTS --vg $VGFILES --hal $HALFILES --logFile ${JOIN_NAME}.join.log ${TOIL_OPTS} ${TOIL_JOIN_OPTS}
 
-aws s3 cp  ${ALIGN_NAME}.join.log ${OUTPUT_BUCKET}/logs-${ALIGN_NAME}/
+aws s3 cp  ${ALIGN_NAME}.join.log ${OUTPUT_BUCKET}/logs-${JOIN_NAME}/
 
 date
