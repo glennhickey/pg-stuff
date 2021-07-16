@@ -168,8 +168,10 @@ fi
 # toggle between stable coordinates / phony minigraph event
 if [[ $HEADER_TABLE != "" ]]; then
 	 GM_OPTS="--fastaHeaderTable ${HEADER_TABLE}"
+	 GS_OPTS="--fastaHeaderTable ${HEADER_TABLE}"
 else
 	 GM_OPTS="--outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa"
+	 GS_OPTS=""
 fi
 
 date
@@ -195,7 +197,7 @@ fi
 
 # phase 3: divide fasta and PAF into chromosomes
 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" ]]; then
-	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME} --logFile ${OUTPUT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
+	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME} --logFile ${OUTPUT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN} ${GS_OPTS}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 fi
 
