@@ -64,7 +64,7 @@ usage() {
     exit 1
 }
 
-while getopts "j:s:m:o:n:a:J:r:v:d:c:H:p:M:gyN:F" o; do
+while getopts "j:s:m:o:n:S:a:J:r:v:d:c:H:p:M:gyN:F" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
