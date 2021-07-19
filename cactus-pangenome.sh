@@ -46,7 +46,8 @@ usage() {
 	 printf "   -m MINIGRAPH      Use this minigraph. ex: ftp://ftp.dfci.harvard.edu/pub/hli/minigraph/HPRC-f1/GRCh38-f1-90.gfa.gz \n"	 
 	 printf "   -o OUTPUT         Output bucket.  ex: s3://cactus-output/GRCh38-pangenome\n"
 	 printf "   -n NAME           Output name.  All output files will be prefixed with this name\n"
-	 printf "   -a ALIGN-NAME     Output name for cactus-align and everything after (by default, same as -n)\n"
+	 printf "   -S SPLIT-NAME     Output name for cactus-graphmap-split and everythign after (by default, same as -n)\n"
+	 printf "   -a ALIGN-NAME     Output name for cactus-align and everything after (by default, same as -S)\n"
 	 printf "   -J JOIN-NAME      Output name for cactus-graphmap-join (by default, same as -a)\n"
 	 printf "   -r REFERENCE      Reference genome name.  This must be present in the SEQFILE.  ex: GRCh38\n"
 	 printf "   -v VCF_REFERENCE  Reference genome name for VCF export (is REFERENCE by default)\n"
@@ -80,6 +81,9 @@ while getopts "j:s:m:o:n:a:J:r:v:d:c:H:p:M:gyN:F" o; do
 		  n)
 				OUTPUT_NAME=${OPTARG}
 				;;
+		  S)
+				SPLIT_NAME=${OPTARG}
+				;;		  
 		  a)
 				ALIGN_NAME=${OPTARG}
 				;;
@@ -194,10 +198,14 @@ if [[ $GAP_MASK == "1" ]]; then
 	 SEQFILE=${MASK_SEQFILE}
 fi
 
+if [[ $SPLIT_NAME == "" ]]; then
+	 SPLIT_NAME=${OUTPUT_NAME}
+fi
+
 # phase 3: divide fasta and PAF into chromosomes
 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" ]]; then
-	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME} --logFile ${OUTPUT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN} ${GS_OPTS}
-	 aws s3 cp  ${OUTPUT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
+	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME} --logFile ${SPLIT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN} ${GS_OPTS}
+	 aws s3 cp  ${SPLIT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${SPLIT_NAME}/
 fi
 
 if [[ $REFERENCE == "GRCh38" ]]; then
@@ -205,13 +213,13 @@ if [[ $REFERENCE == "GRCh38" ]]; then
 fi
 
 if [[ $ALIGN_NAME == "" ]]; then
-	 ALIGN_NAME=${OUTPUT_NAME}
+	 ALIGN_NAME=${SPLIT_NAME}
 fi
 
 # phase 4: align each chromosome with Cactus, producing output in both HAL and vg
 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" ]]; then
-	 aws s3 cp ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/chromfile.txt ./chromfile-${ALIGN_NAME}.txt
-	 aws s3 sync ${OUTPUT_BUCKET}/chroms-${OUTPUT_NAME}/seqfiles ./seqfiles-${ALIGN_NAME} 
+	 aws s3 cp ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME}/chromfile.txt ./chromfile-${ALIGN_NAME}.txt
+	 aws s3 sync ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME}/seqfiles ./seqfiles-${ALIGN_NAME} 
 	 sed -i -e "s/seqfiles/seqfiles-${ALIGN_NAME}/g" ./chromfile-${ALIGN_NAME}.txt
 	 if [[ $REFERENCE == "CHM13" ]]; then
 	     grep -v ^chrOther ./chromfile-${ALIGN_NAME}.txt > ./chromfile-${ALIGN_NAME}.txt.temp
