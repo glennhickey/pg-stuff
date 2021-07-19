@@ -165,12 +165,11 @@ if [[ $MASK_LEN == "0" ]]; then
 	 MASK_LEN=4000000000
 fi
 
+GM_OPTS="--outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa"
 # toggle between stable coordinates / phony minigraph event
 if [[ $HEADER_TABLE != "" ]]; then
-	 GM_OPTS="--fastaHeaderTable ${HEADER_TABLE} --refFromGFA ${REFERENCE}"
 	 GS_OPTS="--fastaHeaderTable ${HEADER_TABLE}"
 else
-	 GM_OPTS="--outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa"
 	 GS_OPTS=""
 fi
 
