@@ -27,6 +27,8 @@ PHASE=""
 # Leave runs of softamsked sequences unaligned if they are at least this long
 # They will also be excluded from the .vg output
 MASK_LEN=100000
+# applied at clipping stage to only clip out given this mask pct
+MASK_FRAC=0.33
 
 # general toil options
 TOIL_OPTS="--batchSystem mesos --provisioner aws --defaultPreemptable --betaInertia 0 --targetTime 1 --realTimeLogging"
@@ -233,7 +235,7 @@ if [[ $JOIN_NAME == "" ]]; then
 	 JOIN_NAME=${ALIGN_NAME}
 fi
 
-JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 63 --normalizeIterations ${NORMALIZE_ITERATIONS}"
+JOIN_OPTS="--clipLength ${MASK_LEN} --clipMaskFrac ${MASK_FRAC} --wlineSep . --indexCores 63 --normalizeIterations ${NORMALIZE_ITERATIONS}"
 if [[ $DECOY != "" ]]; then
 	 JOIN_OPTS="--decoyGraph ${DECOY} ${JOIN_OPTS}"
 fi
