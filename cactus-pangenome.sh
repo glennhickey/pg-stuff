@@ -14,7 +14,6 @@ REFERENCE=""
 VCF_REFERENCE=""
 DECOY=""
 CONFIG=""
-HEADER_TABLE=""
 GAP_MASK=""
 CHM13_Y=""
 NORMALIZE_ITERATIONS="0"
@@ -27,8 +26,6 @@ PHASE=""
 # Leave runs of softamsked sequences unaligned if they are at least this long
 # They will also be excluded from the .vg output
 MASK_LEN=100000
-# applied at clipping stage to only clip out given this mask pct
-MASK_FRAC=0.33
 
 # general toil options
 TOIL_OPTS="--batchSystem mesos --provisioner aws --defaultPreemptable --betaInertia 0 --targetTime 1 --realTimeLogging"
@@ -55,7 +52,6 @@ usage() {
 	 printf "   -v VCF_REFERENCE  Reference genome name for VCF export (is REFERENCE by default)\n"
 	 printf "   -d DECOY          Path to graph of decoy sequences\n"
 	 printf "   -c CONFIG         Cactus configuration file (applied to all commands)\n"
-	 printf "   -H header-table   Contig header table (made with cactus-preprocess --fastaHeaderTable)\n"
 	 printf "Workflow Options:\n"
 	 printf "   -p PHASE          Resume workflow starting with given phase {map, mask, split, align, join}\n"
 	 printf "   -M MASK           Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"
@@ -66,7 +62,7 @@ usage() {
     exit 1
 }
 
-while getopts "j:s:m:o:n:S:a:J:r:v:d:c:H:p:M:gyN:F" o; do
+while getopts "j:s:m:o:n:S:a:J:r:v:d:c:p:M:gyN:F" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -103,9 +99,6 @@ while getopts "j:s:m:o:n:S:a:J:r:v:d:c:H:p:M:gyN:F" o; do
 				;;
 		  c)
 				CONFIG=${OPTARG}
-				;;
-		  H)
-				HEADER_TABLE=${OPTARG}
 				;;
 		  p)
 				PHASE=${OPTARG}
@@ -172,12 +165,6 @@ if [[ $MASK_LEN == "0" ]]; then
 fi
 
 GM_OPTS="--outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa"
-# toggle between stable coordinates / phony minigraph event
-if [[ $HEADER_TABLE != "" ]]; then
-	 GS_OPTS="--fastaHeaderTable ${HEADER_TABLE}"
-else
-	 GS_OPTS=""
-fi
 
 date
 
@@ -206,7 +193,7 @@ fi
 
 # phase 3: divide fasta and PAF into chromosomes
 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" ]]; then
-	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME} --logFile ${SPLIT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN} ${GS_OPTS}
+	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME} --logFile ${SPLIT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${SPLIT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${SPLIT_NAME}/
 fi
 
@@ -235,7 +222,7 @@ if [[ $JOIN_NAME == "" ]]; then
 	 JOIN_NAME=${ALIGN_NAME}
 fi
 
-JOIN_OPTS="--clipLength ${MASK_LEN} --clipMaskFrac ${MASK_FRAC} --wlineSep . --indexCores 63 --normalizeIterations ${NORMALIZE_ITERATIONS}"
+JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 63 --normalizeIterations ${NORMALIZE_ITERATIONS}"
 if [[ $DECOY != "" ]]; then
 	 JOIN_OPTS="--decoyGraph ${DECOY} ${JOIN_OPTS}"
 fi
