@@ -227,7 +227,7 @@ fi
 
 # phase 3: divide fasta and PAF into chromosomes
 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "remap" || $PHASE == "split" ]]; then
-	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH $PAF_NAME --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME} --logFile ${SPLIT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
+	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH $PAF_PATH --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME} --logFile ${SPLIT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${SPLIT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${SPLIT_NAME}/
 fi
 
