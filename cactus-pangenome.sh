@@ -57,7 +57,7 @@ usage() {
 	 printf "   -c CONFIG         Cactus configuration file (applied to all commands)\n"
 	 printf "   -C CLIP           Clip out masked sequences in mask phase\n"
 	 printf "Workflow Options:\n"
-	 printf "   -p PHASE          Resume workflow starting with given phase {map, mask, split, align, join}\n"
+	 printf "   -p PHASE          Resume workflow starting with given phase {map, mask, remap, split, align, join}\n"
 	 printf "   -M MASK           Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"
 	 printf "   -g                Run gap-masking step to prevent bar for handling large minimizer gaps (clumsy but improves precision)\n"
 	 printf "   -y                Assume CHM13 has chrY\n"
@@ -181,8 +181,9 @@ date
 set -ex
 
 # phase 1: map contigs to minigraph
+PAF_PATH=${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf
 if [[ $PHASE == "" || $PHASE == "map" ]]; then
-	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
+	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH $PAF_PATH ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 	 aws s3 cp $SEQFILE ${OUTPUT_BUCKET}/
 fi
@@ -201,9 +202,18 @@ if [[ $GAP_MASK == "1" ]]; then
 	 fi
 	 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" ]]; then
 		  cat $SEQFILE | tail -n +2 | awk -F"\t |/" '{print $1, $NF}' | sed -e 's/s3://g' -e 's/https://g' -e 's/http://g' | awk -v obucket=${OUTPUT_BUCKET} -v oname=${MASK_NAME} '{print $1 "\t" obucket "/fa-masked-" oname "/" $2}' > $MASK_SEQFILE
-		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${MASK_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN} $MASK_OPTS --ignore $REFERENCE
+		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${MASK_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFile ${PAF_PATH} --minLength ${MASK_LEN} $MASK_OPTS --ignore $REFERENCE
 	 fi
 	 SEQFILE=${MASK_SEQFILE}
+fi
+
+# phase 2.5: if we clipped, we need to remap (sigh)
+if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "remap" ]]; then
+	 if [[ $CLIP == "1" && $GAP_AMSK == "1" ]]; then
+		  PAF_PATH=${OUTPUT_BUCKET}/${MASK_NAME}.paf
+		  cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${PAF_PATH} ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphremap.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
+		  aws s3 cp  ${OUTPUT_NAME}.graphremap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
+	 fi
 fi
 
 # if we clipped, don't bother with any mask filters downstream
@@ -216,8 +226,8 @@ if [[ $SPLIT_NAME == "" ]]; then
 fi
 
 # phase 3: divide fasta and PAF into chromosomes
-if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" ]]; then
-	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf  --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME} --logFile ${SPLIT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
+if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "remap" || $PHASE == "split" ]]; then
+	 cactus-graphmap-split $JOBSTORE $SEQFILE $MINIGRAPH $PAF_NAME --refContigs ${REFCONTIGS} --otherContig chrOther --reference $REFERENCE --outDir ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME} --logFile ${SPLIT_NAME}.graphmap-split.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 	 aws s3 cp  ${SPLIT_NAME}.graphmap-split.log ${OUTPUT_BUCKET}/logs-${SPLIT_NAME}/
 fi
 
@@ -230,7 +240,7 @@ if [[ $ALIGN_NAME == "" ]]; then
 fi
 
 # phase 4: align each chromosome with Cactus, producing output in both HAL and vg
-if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "split" || $PHASE == "align" ]]; then
+if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "remap" || $PHASE == "split" || $PHASE == "align" ]]; then
 	 aws s3 cp ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME}/chromfile.txt ./chromfile-${ALIGN_NAME}.txt
 	 aws s3 sync ${OUTPUT_BUCKET}/chroms-${SPLIT_NAME}/seqfiles ./seqfiles-${ALIGN_NAME} 
 	 sed -i -e "s/seqfiles/seqfiles-${ALIGN_NAME}/g" ./chromfile-${ALIGN_NAME}.txt
