@@ -209,7 +209,7 @@ fi
 
 # phase 2.5: if we clipped, we need to remap (sigh)
 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "remap" ]]; then
-	 if [[ $CLIP == "1" && $GAP_AMSK == "1" ]]; then
+	 if [[ $CLIP == "1" && $GAP_MASK == "1" ]]; then
 		  PAF_PATH=${OUTPUT_BUCKET}/${MASK_NAME}.paf
 		  cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${PAF_PATH} ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphremap.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
 		  aws s3 cp  ${OUTPUT_NAME}.graphremap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
