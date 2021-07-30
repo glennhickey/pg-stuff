@@ -201,7 +201,7 @@ if [[ $GAP_MASK == "1" ]]; then
 	 fi
 	 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" ]]; then
 		  cat $SEQFILE | tail -n +2 | awk -F"\t |/" '{print $1, $NF}' | sed -e 's/s3://g' -e 's/https://g' -e 's/http://g' | awk -v obucket=${OUTPUT_BUCKET} -v oname=${MASK_NAME} '{print $1 "\t" obucket "/fa-masked-" oname "/" $2}' > $MASK_SEQFILE
-		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${MASK_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN} $MASK_OPTS
+		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${MASK_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN} $MASK_OPTS --ignore $REFERENCE
 	 fi
 	 SEQFILE=${MASK_SEQFILE}
 fi
