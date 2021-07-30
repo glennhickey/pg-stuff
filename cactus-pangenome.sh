@@ -18,6 +18,7 @@ GAP_MASK=""
 CHM13_Y=""
 NORMALIZE_ITERATIONS="0"
 GFAFFIX="0"
+CLIP=""
 
 # Workflow options
 PHASE=""
@@ -52,6 +53,7 @@ usage() {
 	 printf "   -v VCF_REFERENCE  Reference genome name for VCF export (is REFERENCE by default)\n"
 	 printf "   -d DECOY          Path to graph of decoy sequences\n"
 	 printf "   -c CONFIG         Cactus configuration file (applied to all commands)\n"
+	 printf "   -C CLIP           Clip out masked sequences in mask phase\n"
 	 printf "Workflow Options:\n"
 	 printf "   -p PHASE          Resume workflow starting with given phase {map, mask, split, align, join}\n"
 	 printf "   -M MASK           Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"
@@ -62,7 +64,7 @@ usage() {
     exit 1
 }
 
-while getopts "j:s:m:o:n:S:a:J:r:v:d:c:p:M:gyN:F" o; do
+while getopts "j:s:m:o:n:S:a:J:r:v:d:c:Cp:M:gyN:F" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -117,6 +119,9 @@ while getopts "j:s:m:o:n:S:a:J:r:v:d:c:p:M:gyN:F" o; do
 				;;
 		  F)
 				GFAFFIX="1"
+				;;
+		  C)
+				CLIP="1"
 				;;
         *)
             usage
@@ -180,11 +185,21 @@ fi
 # phase 2: mask coverage gaps (so bar doesn't try to realign them)
 if [[ $GAP_MASK == "1" ]]; then
 	 MASK_SEQFILE=${SEQFILE}.${OUTPUT_NAME}.mask
+	 if [[ $CLIP == "1" ]]; then
+		  MASK_OPTS="--maskAction clip"
+	 else
+		  MASK_OPTS="--maskAction softmask"
+	 fi
 	 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" ]]; then
 		  cat $SEQFILE | tail -n +2 | awk -F"\t |/" '{print $1, $NF}' | sed -e 's/s3://g' -e 's/https://g' -e 's/http://g' | awk -v obucket=${OUTPUT_BUCKET} -v oname=${OUTPUT_NAME} '{print $1 "\t" obucket "/fa-masked-" oname "/" $2}' > $MASK_SEQFILE
-		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${OUTPUT_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN}
+		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${OUTPUT_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN} $MASK_OPTS
 	 fi
 	 SEQFILE=${MASK_SEQFILE}
+fi
+
+# if we clipped, don't bother with any mask filters downstream
+if [[ $CLIP == "1" ]]; then
+	 MASK_LEN=0
 fi
 
 if [[ $SPLIT_NAME == "" ]]; then
