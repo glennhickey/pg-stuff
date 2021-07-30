@@ -8,6 +8,7 @@ SEQFILE=""
 MINIGRAPH=""
 OUTPUT_BUCKET=""
 OUTPUT_NAME=""
+MASK_NAME=""
 ALIGN_NAME=""
 JOIN_NAME=""
 REFERENCE=""
@@ -46,7 +47,8 @@ usage() {
 	 printf "   -m MINIGRAPH      Use this minigraph. ex: ftp://ftp.dfci.harvard.edu/pub/hli/minigraph/HPRC-f1/GRCh38-f1-90.gfa.gz \n"	 
 	 printf "   -o OUTPUT         Output bucket.  ex: s3://cactus-output/GRCh38-pangenome\n"
 	 printf "   -n NAME           Output name.  All output files will be prefixed with this name\n"
-	 printf "   -S SPLIT-NAME     Output name for cactus-graphmap-split and everythign after (by default, same as -n)\n"
+	 printf "   -k MASK-NAME      Output name for cactus-preprocess mask option and everything after (by default, same as -n)\n"
+	 printf "   -S SPLIT-NAME     Output name for cactus-graphmap-split and everything after (by default, same as -k)\n"
 	 printf "   -a ALIGN-NAME     Output name for cactus-align and everything after (by default, same as -S)\n"
 	 printf "   -J JOIN-NAME      Output name for cactus-graphmap-join (by default, same as -a)\n"
 	 printf "   -r REFERENCE      Reference genome name.  This must be present in the SEQFILE.  ex: GRCh38\n"
@@ -64,7 +66,7 @@ usage() {
     exit 1
 }
 
-while getopts "j:s:m:o:n:S:a:J:r:v:d:c:Cp:M:gyN:F" o; do
+while getopts "j:s:m:o:n:k:S:a:J:r:v:d:c:Cp:M:gyN:F" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -81,6 +83,9 @@ while getopts "j:s:m:o:n:S:a:J:r:v:d:c:Cp:M:gyN:F" o; do
 		  n)
 				OUTPUT_NAME=${OPTARG}
 				;;
+		  k)
+				MASK_NAME=${OPTARG}
+				;;		  
 		  S)
 				SPLIT_NAME=${OPTARG}
 				;;		  
@@ -182,17 +187,21 @@ if [[ $PHASE == "" || $PHASE == "map" ]]; then
 	 aws s3 cp $SEQFILE ${OUTPUT_BUCKET}/
 fi
 
+if [[ $MASK_NAME == "" ]]; then
+	 MASK_NAME=${OUTPUT_NAME}
+fi
+
 # phase 2: mask coverage gaps (so bar doesn't try to realign them)
 if [[ $GAP_MASK == "1" ]]; then
-	 MASK_SEQFILE=${SEQFILE}.${OUTPUT_NAME}.mask
+	 MASK_SEQFILE=${SEQFILE}.${MASK_NAME}.mask
 	 if [[ $CLIP == "1" ]]; then
 		  MASK_OPTS="--maskAction clip"
 	 else
 		  MASK_OPTS="--maskAction softmask"
 	 fi
 	 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" ]]; then
-		  cat $SEQFILE | tail -n +2 | awk -F"\t |/" '{print $1, $NF}' | sed -e 's/s3://g' -e 's/https://g' -e 's/http://g' | awk -v obucket=${OUTPUT_BUCKET} -v oname=${OUTPUT_NAME} '{print $1 "\t" obucket "/fa-masked-" oname "/" $2}' > $MASK_SEQFILE
-		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${OUTPUT_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN} $MASK_OPTS
+		  cat $SEQFILE | tail -n +2 | awk -F"\t |/" '{print $1, $NF}' | sed -e 's/s3://g' -e 's/https://g' -e 's/http://g' | awk -v obucket=${OUTPUT_BUCKET} -v oname=${MASK_NAME} '{print $1 "\t" obucket "/fa-masked-" oname "/" $2}' > $MASK_SEQFILE
+		  cactus-preprocess $JOBSTORE $SEQFILE $MASK_SEQFILE  --realTimeLogging --logFile ${MASK_NAME}.gapmask.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFile ${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf --minLength ${MASK_LEN} $MASK_OPTS
 	 fi
 	 SEQFILE=${MASK_SEQFILE}
 fi
@@ -203,7 +212,7 @@ if [[ $CLIP == "1" ]]; then
 fi
 
 if [[ $SPLIT_NAME == "" ]]; then
-	 SPLIT_NAME=${OUTPUT_NAME}
+	 SPLIT_NAME=${MASK_NAME}
 fi
 
 # phase 3: divide fasta and PAF into chromosomes
