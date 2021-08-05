@@ -33,9 +33,10 @@ MASK_LEN=100000
 TOIL_OPTS="--batchSystem mesos --provisioner aws --defaultPreemptable --betaInertia 0 --targetTime 1 --realTimeLogging"
 # cactus jobs get run on trusty old r3 clusters 
 TOIL_R3_OPTS="--nodeTypes r3.8xlarge:0.63 --maxNodes 25"
-TOIL_R4_OPTS="--nodeTypes r5.8xlarge:1.26 --maxNodes 25 --nodeStorage 1000"
+# r4.8xlarge / r5.8xlarge no longer seem ot work on spot
+TOIL_R4_OPTS="--nodeTypes r5.8xlarge --maxNodes 25 --nodeStorage 1000"
 # except join, which needs a little more RAM for the whole-genome indexing
-TOIL_JOIN_OPTS="--nodeTypes r5.16xlarge --maxNodes 1 --nodeStorage 2000"
+TOIL_JOIN_OPTS="--nodeTypes r5.16xlarge --maxNodes 2 --nodeStorage 2000"
 
 usage() {
     # Print usage to stderr
@@ -211,7 +212,7 @@ fi
 if [[ $CLIP == "1" && $GAP_MASK == "1" ]]; then
 	 PAF_PATH=${OUTPUT_BUCKET}/${MASK_NAME}.paf
 	 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "remap" ]]; then
-		  cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${PAF_PATH} ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphremap.log ${TOIL_OPTS} ${TOIL_R3_OPTS}
+		  cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${PAF_PATH} ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphremap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
 		  aws s3 cp  ${OUTPUT_NAME}.graphremap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 	 fi
 fi
@@ -256,7 +257,7 @@ if [[ $JOIN_NAME == "" ]]; then
 	 JOIN_NAME=${ALIGN_NAME}
 fi
 
-JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 63 --normalizeIterations ${NORMALIZE_ITERATIONS}"
+JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 63 --normalizeIterations ${NORMALIZE_ITERATIONS} --vcf --giraffe"
 if [[ $DECOY != "" ]]; then
 	 JOIN_OPTS="--decoyGraph ${DECOY} ${JOIN_OPTS}"
 fi
