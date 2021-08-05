@@ -12,7 +12,7 @@ for i, arg in enumerate(sys.argv[1:]):
                            sample = toks[0]
                            path_len = int(toks[1])
                            st = sample.split('.')
-                           name = '.'.join(st[:-1])
+                           name = '.'.join(st[:-1][0:2])
                            if name not in tot_sam_len:
                                     tot_sam_len[name] = 0
                            tot_sam_len[name] += path_len
