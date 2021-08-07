@@ -20,6 +20,7 @@ CHM13_Y=""
 NORMALIZE_ITERATIONS="0"
 GFAFFIX="0"
 CLIP=""
+FORCE_CONTIG=""
 
 # Workflow options
 PHASE=""
@@ -64,10 +65,11 @@ usage() {
 	 printf "   -y                Assume CHM13 has chrY\n"
 	 printf "   -N ITERATIONS     Normalize N interations with vg\n"
 	 printf "   -F                Run GFAffix normalization\n"
+	 printf "   -X CONTIG         Run on given chromosome instead of whole-genome (applies only after split)\n"
     exit 1
 }
 
-while getopts "j:s:m:o:n:k:S:a:J:r:v:d:c:Cp:M:gyN:F" o; do
+while getopts "j:s:m:o:n:k:S:a:J:r:v:d:c:Cp:M:gyN:FX:" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -129,6 +131,9 @@ while getopts "j:s:m:o:n:k:S:a:J:r:v:d:c:Cp:M:gyN:F" o; do
 		  C)
 				CLIP="1"
 				;;
+		  X)
+				FORCE_CONTIG=${OPTARG}
+				;;		  
         *)
             usage
             ;;
@@ -249,8 +254,16 @@ if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "remap" |
 	     grep -v ^chrOther ./chromfile-${ALIGN_NAME}.txt > ./chromfile-${ALIGN_NAME}.txt.temp
 	     mv ./chromfile-${ALIGN_NAME}.txt.temp ./chromfile-${ALIGN_NAME}.txt
 	 fi
+	 if [[ $FORCE_CONTIG != "" ]]; then
+		  grep "^${FORCE_CONTIG}" ./chromfile-${ALIGN_NAME}.txt > ./chromfile-${ALIGN_NAME}.txt.temp
+		  mv ./chromfile-${ALIGN_NAME}.txt.temp ./chromfile-${ALIGN_NAME}.txt
+	 fi
 	 cactus-align-batch $JOBSTORE ./chromfile-${ALIGN_NAME}.txt ${OUTPUT_BUCKET}/align-batch-${ALIGN_NAME} --alignCores 32 --alignOptions "--pafInput --pangenome --outVG --realTimeLogging --barMaskFilter ${MASK_LEN} --reference ${REFERENCE} --retryCount 0" --logFile ${ALIGN_NAME}.align.log ${TOIL_OPTS} ${TOIL_R4_OPTS}
 	 aws s3 cp  ${ALIGN_NAME}.align.log ${OUTPUT_BUCKET}/logs-${ALIGN_NAME}/
+fi
+
+if [[ $FORCE_CONTIG != "" ]]; then
+	 REFCONTIGS=$FORCE_CONTIG
 fi
 
 if [[ $JOIN_NAME == "" ]]; then
