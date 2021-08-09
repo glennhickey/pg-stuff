@@ -29,6 +29,8 @@ PHASE=""
 # Leave runs of softamsked sequences unaligned if they are at least this long
 # They will also be excluded from the .vg output
 MASK_LEN=100000
+# passed only to graphmap-join -u
+CLIP_MASK_LEN=""
 
 # general toil options
 TOIL_OPTS="--batchSystem mesos --provisioner aws --defaultPreemptable --betaInertia 0 --targetTime 1 --realTimeLogging"
@@ -61,6 +63,7 @@ usage() {
 	 printf "Workflow Options:\n"
 	 printf "   -p PHASE          Resume workflow starting with given phase {map, mask, remap, split, align, join}\n"
 	 printf "   -M MASK           Don't align softmasked sequence stretches greater than MASK. 0 to disable [default = 100000]\n"
+	 printf "   -K clip-mask      Clip out this many bases. (should only use if minigraph included in vg output from cactus-align). [default = same as -M]\n"
 	 printf "   -g                Run gap-masking step to prevent bar for handling large minimizer gaps (clumsy but improves precision)\n"
 	 printf "   -y                Assume CHM13 has chrY\n"
 	 printf "   -N ITERATIONS     Normalize N interations with vg\n"
@@ -69,7 +72,7 @@ usage() {
     exit 1
 }
 
-while getopts "j:s:m:o:n:k:S:a:J:r:v:d:c:Cp:M:gyN:FX:" o; do
+while getopts "j:s:m:o:n:k:S:a:J:r:v:d:c:Cp:M:K:gyN:FX:" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -116,6 +119,9 @@ while getopts "j:s:m:o:n:k:S:a:J:r:v:d:c:Cp:M:gyN:FX:" o; do
 		  M)
 				MASK_LEN=${OPTARG}
 				;;
+		  K)
+				CLIP_MASK_LEN=${OPTARG}
+				;;		  
 		  g)
 				GAP_MASK="1"
 				;;
@@ -178,6 +184,10 @@ fi
 
 if [[ $MASK_LEN == "0" ]]; then
 	 MASK_LEN=4000000000
+fi
+
+if [[ $CLIP_MASK_LEN == "" ]]; then
+	 CLIP_MASK_LEN=$MASK_LEN
 fi
 
 GM_OPTS="--outputFasta ${OUTPUT_BUCKET}/${OUTPUT_NAME}.gfa.fa"
@@ -270,7 +280,7 @@ if [[ $JOIN_NAME == "" ]]; then
 	 JOIN_NAME=${ALIGN_NAME}
 fi
 
-JOIN_OPTS="--clipLength ${MASK_LEN} --wlineSep . --indexCores 63 --normalizeIterations ${NORMALIZE_ITERATIONS} --vcf --giraffe"
+JOIN_OPTS="--clipLength ${CLIP_MASK_LEN} --wlineSep . --indexCores 63 --normalizeIterations ${NORMALIZE_ITERATIONS} --vcf --giraffe"
 if [[ $DECOY != "" ]]; then
 	 JOIN_OPTS="--decoyGraph ${DECOY} ${JOIN_OPTS}"
 fi
