@@ -199,7 +199,7 @@ set -ex
 # phase 1: map contigs to minigraph
 PAF_PATH=${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf
 if [[ $PHASE == "" || $PHASE == "map" ]]; then
-	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH $PAF_PATH ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
+	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH $PAF_PATH ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN} --reference ${REFERENCE}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 	 aws s3 cp $SEQFILE ${OUTPUT_BUCKET}/
 fi
@@ -227,7 +227,7 @@ fi
 if [[ $CLIP == "1" && $GAP_MASK == "1" ]]; then
 	 PAF_PATH=${OUTPUT_BUCKET}/${MASK_NAME}.paf
 	 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "remap" ]]; then
-		  cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${PAF_PATH} ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphremap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN}
+		  cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${PAF_PATH} ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphremap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN} --reference ${REFERENCE}
 		  aws s3 cp  ${OUTPUT_NAME}.graphremap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 	 fi
 fi
