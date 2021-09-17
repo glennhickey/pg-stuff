@@ -18,6 +18,7 @@ with open(vcf_path, 'r') as vcf_file:
     for line in vcf_file:
         if len(line) > 5 and not line.startswith('#'):
             vcf_ids.add(line.split('\t')[2])
+sys.stderr.write("[strip-nested.py] Scanned {} records in first pass\n".format(len(vcf_ids)))
 
 # pass two: filter out records whose parents are in the file
 f_count = 0
@@ -37,7 +38,7 @@ with open(vcf_path, 'r') as vcf_file:
                 f_count += 1
         if not filter:
             sys.stdout.write(line)                
-sys.stderr.write("Filtered {}/{} records\n".format(f_count, len(vcf_ids)))
+sys.stderr.write("[strip-nested.py] Filtered {}/{} records\n".format(f_count, len(vcf_ids)))
 
             
         
