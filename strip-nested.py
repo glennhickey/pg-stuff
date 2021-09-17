@@ -1,10 +1,9 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
 Filter out nested records from vg deconstruct output.  A record is considered nested if it has a PS
 INFO field, and the variant from that field is present in the VCF
 """
 
-import vcf
 import os, sys
 
 if len(sys.argv) != 2:
@@ -15,20 +14,30 @@ vcf_path = sys.argv[1]
 
 # pass one: store every id
 vcf_ids = set()
-vcf_reader = vcf.Reader(filename=vcf_path)
-for record in vcf_reader:
-    vcf_ids.add(record.ID)
+with open(vcf_path, 'r') as vcf_file:
+    for line in vcf_file:
+        if len(line) > 5 and not line.startswith('#'):
+            vcf_ids.add(line.split('\t')[2])
 
 # pass two: filter out records whose parents are in the file
 f_count = 0
-vcf_reader = vcf.Reader(filename=vcf_path)
-vcf_writer = vcf.Writer(sys.stdout, vcf_reader)
-for record in vcf_reader:
-    if "PS" not in record.INFO or record.INFO["PS"] not in vcf_ids:
-        vcf_writer.write_record(record)
-    else:
-        f_count += 1
-sys.stderr.write(f"Filtered {f_count}/{len(vcf_ids)} records\n")
+with open(vcf_path, 'r') as vcf_file:
+    for line in vcf_file:
+        filter = False
+        if len(line) > 5 and not line.startswith('#'):
+            info = line.split('\t')[7]
+            itoks = info.split(';')
+            parent = None
+            for itok in itoks:
+                if itok.startswith('PS='):
+                    parent = itok[3:]
+                    break
+            if parent and parent in vcf_ids:
+                filter = True
+                f_count += 1
+        if not filter:
+            sys.stdout.write(line)                
+sys.stderr.write("Filtered {}/{} records\n".format(f_count, len(vcf_ids)))
 
             
         
