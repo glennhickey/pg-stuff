@@ -112,9 +112,8 @@ LOCAL_CALLS_SAMPLE="${OUTDIR}/calls_sample.vcf.gz"
 
 if [ ! -f "$LOCAL_CALLS_SAMPLE" ]; then
 	 aws s3 cp $CALLS $LOCAL_CALLS
-	 aws s3 cp ${CALLS}.tbi ${LOCAL_CALLS}.tbi
-	 bcftools view $LOCAL_CALLS -a -s $CALLS_SAMPLE | bcftools view -e 'STRLEN(REF)>2000 || STRLEN(ALT)>2000 || GT~"\." || GT="ref"' > ${OUTDIR}/temp.vcf
-	 strip-nested.py ${OUTDIR}/temp.vcf | sed -e "s/GRCh38.//g" | bgzip --threads 8 > ${LOCAL_CALLS_SAMPLE}
+	 gzip -dc ${LOCAL_CALLS} > ${OUTDIR}/temp.vcf
+	 strip-nested.py ${OUTDIR}/temp.vcf 2000 | bcftools view -a -s $CALLS_SAMPLE | bcftools view -e 'GT~"\." || GT="ref"' | sed -e "s/GRCh38.//g" | bgzip --threads 8 > ${LOCAL_CALLS_SAMPLE}
 	 tabix -fp vcf ${LOCAL_CALLS_SAMPLE}
 fi
 
