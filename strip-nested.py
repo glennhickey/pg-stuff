@@ -60,7 +60,7 @@ with open(vcf_path, 'r') as vcf_file:
             if name in too_big:
                 filter = True
             else:
-                parent = get_parent(name)
+                parent = get_parent(toks)
                 if parent is not None and parent not in too_big:
                     filter = True
             if filter:
