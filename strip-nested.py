@@ -25,16 +25,19 @@ def get_parent(toks):
 # pass one: find big alleles and keep track of parents
 too_big = set()
 parents = {}
+ids = {}
 with open(vcf_path, 'r') as vcf_file:
     for line in vcf_file:
         if len(line) > 5 and not line.startswith('#'):
             toks = line.split('\t')
             ref_len = len(toks[3])
+            name = toks[2]
             if ref_len > max_len or max([len(x) for x in toks[4].split(',')]) > max_len:
                 too_big.add(toks[2])
             parent = get_parent(toks)
             if parent:
                 parents[toks[2]] = parent
+            ids.add(name)
 
 # make sure if an allele is too big, its parents get flagged for deletion
 big_parents = set()
@@ -44,7 +47,7 @@ for big_site in too_big:
         big_parents.add(parent)
         parent = parents[parent] if parent in parents else None
 too_big = too_big.union(big_parents)
-
+        
 # pass two: keep only stuff that is either top level or whose immediate parent has been deleted
 sys.stderr.write("[strip-nested.py] Found {} sites with an allele > {} (or that are parents of such sites)\n".format(len(too_big), max_len))
 
@@ -61,7 +64,7 @@ with open(vcf_path, 'r') as vcf_file:
                 filter = True
             else:
                 parent = get_parent(toks)
-                if parent is not None and parent not in too_big:
+                if parent is not None and parent in ids and parent not in too_big:
                     filter = True
             if filter:
                 f_count += 1
