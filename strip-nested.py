@@ -25,7 +25,7 @@ def get_parent(toks):
 # pass one: find big alleles and keep track of parents
 too_big = set()
 parents = {}
-ids = {}
+ids = set()
 with open(vcf_path, 'r') as vcf_file:
     for line in vcf_file:
         if len(line) > 5 and not line.startswith('#'):
