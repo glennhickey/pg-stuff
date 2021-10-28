@@ -57,7 +57,7 @@ too_big = too_big.union(big_parents)
         
 # pass two: keep only stuff that is either top level or whose immediate parent has been deleted
 if max_len != sys.maxsize:
-    sys.stderr.write("[strip-nested.py] Found {} sites with an allele > {} (or that are parents of such sites)\n".format(len(too_big), max_len))
+    sys.stderr.write("[strip-nested.py] Found {} sites with ref allele length > {} (or that are parents of such sites)\n".format(len(too_big), max_len))
 
 # pass two: filter out records whose parents are in the file
 f_count = 0
@@ -77,11 +77,11 @@ with gzip.open(vcf_path, 'rb') as vcf_file:
                 filter = True
             elif parent is not None and parent in ids and parent not in too_big:
                 filter = True
-            if filter:
-                f_count += 1
-            t_count += 1
         if not filter:
             sys.stdout.write(line.decode("utf-8"))
+        else:
+            f_count += 1
+        t_count += 1
 sys.stderr.write("[strip-nested.py] Found {} PS ids not present in VCF\n".format(len(warning_set)))
 sys.stderr.write("[strip-nested.py] Filtered {}/{} records\n".format(f_count, t_count))
 
