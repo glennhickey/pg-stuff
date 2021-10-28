@@ -17,7 +17,7 @@ vcf_path = sys.argv[1]
 max_len = int(sys.argv[2]) if len(sys.argv) > 2 else sys.maxsize
 
 if not vcf_path.endswith('vcf.gz'):
-    sys.stderr('only .vcf.gz input supported\n')
+    sys.stderr.write('only .vcf.gz input supported\n')
     sys.exit(1)
 
 def get_parent(toks):
