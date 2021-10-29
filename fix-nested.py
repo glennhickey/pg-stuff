@@ -44,23 +44,26 @@ def set_parent_lv(toks, parent, lv):
     toks[7] = ';'.join([itok for itok in itoks if itok])
 
 # pass one: compute the nesting tree from PS tags
-parents = {}
+parents_by_chrom = {}
 with gzip.open(vcf_path, 'r') as vcf_file:
     for line in vcf_file:
         line = line.decode('utf-8')
         if len(line) > 5 and not line.startswith('#'):
             toks = line.split('\t')
+            chrom = toks[0]
+            if chrom not in parents_by_chrom:
+                parents_by_chrom[chrom] = {}
             name = toks[2]
             parent = get_parent(toks)
-            parents[name] = parent
+            parents_by_chrom[chrom][name] = parent
 
 # walk up parents (from dict) counting levels
 # (important: but only walk up if parent was actually seen in vcf)
-def get_lv(name):
+def get_lv(chrom, name):
     lv = 0
     while name:
-        parent = parents[name]
-        if parent not in parents:
+        parent = parents_by_chrom[chrom][name]
+        if parent not in parents_by_chrom[chrom]:
             parent = None
         if parent:
             lv += 1
@@ -74,9 +77,10 @@ with gzip.open(vcf_path, 'r') as vcf_file:
         filter = False
         if len(line) > 5 and not line.startswith('#'):
             toks = line.split('\t')
+            chrom = toks[0]
             name = toks[2]
             parent = get_parent(toks)
-            lv = get_lv(name)
+            lv = get_lv(chrom, name)
             if lv > 0:
                 assert parent is not None
             set_parent_lv(toks, parent, lv)
