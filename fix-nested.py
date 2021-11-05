@@ -2,13 +2,12 @@
 """
 Correct LV and PS tags to account for missing sites in the VCF. 
 
-If parent in VCF:
-   LV = parent LV + 1
-else
-   LV = 0
+Since snarl information in VCF is incomplete (why we are running this in the first place)
+we use an interval tree to get the information
 """
 
 import os, sys, gzip
+from intervaltree import Interval, IntervalTree
 
 if len(sys.argv) not in [2]:
     sys.stderr.write('fix-nested.py: correct LV and PS tags to account for missing sites in the VCF\n\n')
@@ -43,47 +42,64 @@ def set_parent_lv(toks, parent, lv):
             itoks[i] = 'LV={}'.format(lv)
     toks[7] = ';'.join([itok for itok in itoks if itok])
 
-# pass one: compute the nesting tree from PS tags
-parents_by_chrom = {}
+# pass one: compute the nesting tree from reference coordinates
+chrom_count = 0
+interval_count = 0
+interval_trees_by_chrom = {}
 with gzip.open(vcf_path, 'r') as vcf_file:
     for line in vcf_file:
         line = line.decode('utf-8')
         if len(line) > 5 and not line.startswith('#'):
             toks = line.split('\t')
             chrom = toks[0]
-            if chrom not in parents_by_chrom:
-                parents_by_chrom[chrom] = {}
+            pos = int(toks[1])
             name = toks[2]
-            parent = get_parent(toks)
-            parents_by_chrom[chrom][name] = parent
+            ref_len = len(toks[3])
+            if chrom not in interval_trees_by_chrom:
+                interval_trees_by_chrom[chrom] = IntervalTree()
+                chrom_count += 1
+            interval_trees_by_chrom[chrom].addi(pos, pos + ref_len, name)
+            interval_count += 1
 
-# walk up parents (from dict) counting levels
-# (important: but only walk up if parent was actually seen in vcf)
-def get_lv(chrom, name):
-    lv = 0
-    while name:
-        parent = parents_by_chrom[chrom][name]
-        if parent not in parents_by_chrom[chrom]:
-            parent = None
-        if parent:
-            lv += 1
-        name = parent
-    return lv
+sys.stderr.write("[fix-nested.py]: Computed {} interval trees containing a total of {} intervals\n".format(chrom_count, interval_count))
 
-# pass two: correct the LV and PS tags
+# pass two: use the interval tree to sort out LV and PS
 with gzip.open(vcf_path, 'r') as vcf_file:
     for line in vcf_file:
         line = line.decode('utf-8')
-        filter = False
         if len(line) > 5 and not line.startswith('#'):
             toks = line.split('\t')
             chrom = toks[0]
+            pos = int(toks[1])
             name = toks[2]
-            parent = get_parent(toks)
-            lv = get_lv(chrom, name)
-            if lv > 0:
-                assert parent is not None
-            set_parent_lv(toks, parent, lv)
+            ref_len = len(toks[3])
+            interval = Interval(pos, pos + ref_len, name)
+            # find all overlapping intervals            
+            overlaps = interval_trees_by_chrom[chrom].overlap(interval)
+            # count containing intervals (and find smallest one)
+            parent_interval = None
+            num_parents = 0
+            found_self = False
+            for overlap in overlaps:
+                if overlap != interval:
+                    if overlap.begin <= interval.begin and overlap.end >= interval.end:
+                        if overlap.begin < interval.begin or overlap.end > interval.end:
+                            num_parents += 1
+                            if parent_interval is None or (parent_interval.begin <= overlap.begin and parent_interval.end >= overlap.end):
+                                parent_interval = overlap
+                        else:
+                            sys.stderr.write("[fix-nested.py]: Warning found duplicate intervals: {} and {}\n".format(interval, overlap))
+                else:
+                    found_self = True
+
+            # sanity check
+            assert(found_self)
+
+            lv = num_parents
+            ps = parent_interval.data if parent_interval else None
+            assert (ps == None) == (lv == 0)
+                    
+            set_parent_lv(toks, ps, lv)
             sys.stdout.write('\t'.join(toks))
         else:
             sys.stdout.write(line)
