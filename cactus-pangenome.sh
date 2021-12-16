@@ -31,6 +31,8 @@ PHASE=""
 MASK_LEN=100000
 # passed only to graphmap-join -u
 CLIP_MASK_LEN=""
+# filter big deletions in graphmap
+DEL_LEN=10000000
 
 # general toil options
 TOIL_OPTS="--batchSystem mesos --provisioner aws --defaultPreemptable --betaInertia 0 --targetTime 1 --realTimeLogging"
@@ -69,10 +71,11 @@ usage() {
 	 printf "   -N ITERATIONS     Normalize N interations with vg\n"
 	 printf "   -F                Run GFAffix normalization\n"
 	 printf "   -X CONTIG         Run on given chromosome instead of whole-genome (applies only after split)\n"
+	 printf "   -E DEL-LEN        Filter out deletions > DEL-LEN in graphamp\n"
     exit 1
 }
 
-while getopts "j:s:m:o:n:k:S:a:J:r:v:d:c:Cp:M:K:gyN:FX:" o; do
+while getopts "j:s:m:o:n:k:S:a:J:r:v:d:c:Cp:M:K:gyN:FX:E:" o; do
     case "${o}" in
         j)
             JOBSTORE=${OPTARG}
@@ -139,7 +142,10 @@ while getopts "j:s:m:o:n:k:S:a:J:r:v:d:c:Cp:M:K:gyN:FX:" o; do
 				;;
 		  X)
 				FORCE_CONTIG=${OPTARG}
-				;;		  
+				;;
+		  E)
+				DEL_LEN=${OPTARG}
+				;;
         *)
             usage
             ;;
@@ -199,7 +205,7 @@ set -ex
 # phase 1: map contigs to minigraph
 PAF_PATH=${OUTPUT_BUCKET}/${OUTPUT_NAME}.paf
 if [[ $PHASE == "" || $PHASE == "map" ]]; then
-	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH $PAF_PATH ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN} --reference ${REFERENCE}
+	 cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH $PAF_PATH ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphmap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN} --reference ${REFERENCE} --delFilter ${DEL_LEN}
 	 aws s3 cp  ${OUTPUT_NAME}.graphmap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 	 aws s3 cp $SEQFILE ${OUTPUT_BUCKET}/
 fi
@@ -227,7 +233,7 @@ fi
 if [[ $CLIP == "1" && $GAP_MASK == "1" ]]; then
 	 PAF_PATH=${OUTPUT_BUCKET}/${MASK_NAME}.paf
 	 if [[ $PHASE == "" || $PHASE == "mask" || $PHASE == "map" || $PHASE == "remap" ]]; then
-		  cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${PAF_PATH} ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphremap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN} --reference ${REFERENCE}
+		  cactus-graphmap $JOBSTORE $SEQFILE $MINIGRAPH ${PAF_PATH} ${GM_OPTS} --logFile ${OUTPUT_NAME}.graphremap.log ${TOIL_OPTS} ${TOIL_R3_OPTS} --maskFilter ${MASK_LEN} --reference ${REFERENCE} --delFilter ${DEL_LEN}
 		  aws s3 cp  ${OUTPUT_NAME}.graphremap.log ${OUTPUT_BUCKET}/logs-${OUTPUT_NAME}/
 	 fi
 fi
@@ -291,7 +297,7 @@ else
 fi
 
 if [[ $VCF_REFERENCE != "" ]]; then
-    JOIN_OPTS="--vcfReference $VCF_REFERENCE ${JOIN_OPTS}"
+    JOIN_OPTS="--vcfReference $VCF_REFERENCE ${JOIN_OPTS} --xgReference $VCF_REFERENCE"
 fi
 if [[ $GFAFFIX == "1" ]]; then
     JOIN_OPTS="--gfaffix ${JOIN_OPTS}"
