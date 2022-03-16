@@ -8,7 +8,7 @@ CALLS=""
 OUTDIR=""
 TRUTH_SAMPLE=""
 CALLS_SAMPLE=""
-REFERENCE="s3://vg-k8s/vgamb/wg/cactus/GRCh38-f1-90/fasta-gap-masked/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz"
+REFERENCE="s3://vg-k8s/vgamb/wg/fasta/year1_freeze_assembly_v2_genbank_brnn/GCA_000001405.15_GRCh38_no_alt_analysis_set.fna.gz"
 
 usage() {
     # Print usage to stderr
