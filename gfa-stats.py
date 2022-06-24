@@ -43,7 +43,7 @@ for line in sys.stdin:
         path_count += 1
     elif line.startswith('W'):
         toks = line.split('\t')
-        stpe_count += toks[6].count('>') + toks[6].count('<')
+        step_count += toks[6].count('>') + toks[6].count('<')
         total_path_length += int(toks[5]) - int(toks[4])
         path_count += 1
 
