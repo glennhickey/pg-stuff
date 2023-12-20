@@ -40,7 +40,7 @@ with gzip.open(vcf_path, 'rb') as vcf_file:
             toks = line.split(b'\t')
             name = toks[2]
             ref_len = len(toks[3])
-            alt_len = max([len(alt) for alt in toks[3].split(',')]) if max_alt_len != sys.maxsize else -1
+            alt_len = max([len(alt) for alt in toks[3].decode("utf-8").split(',')]) if max_alt_len != sys.maxsize else -1
             parent = get_parent(toks)
             if ref_len > max_ref_len or alt_len > max_alt_len:
                 too_big.add(toks[2])
