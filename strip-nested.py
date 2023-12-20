@@ -40,7 +40,7 @@ with gzip.open(vcf_path, 'rb') as vcf_file:
             toks = line.split(b'\t')
             name = toks[2]
             ref_len = len(toks[3])
-            alt_len = max([len(alt) for alt in toks[3].decode("utf-8").split(',')]) if max_alt_len != sys.maxsize else -1
+            alt_len = max([len(alt) for alt in toks[4].split(b',')]) if max_alt_len != sys.maxsize else -1
             parent = get_parent(toks)
             if ref_len > max_ref_len or alt_len > max_alt_len:
                 too_big.add(toks[2])
@@ -82,11 +82,11 @@ with gzip.open(vcf_path, 'rb') as vcf_file:
                 filter = True
             elif parent is not None and parent in ids and parent not in too_big:
                 filter = True
+            t_count += 1
         if not filter:
             sys.stdout.write(line.decode("utf-8"))
         else:
             f_count += 1
-        t_count += 1
 sys.stderr.write("[strip-nested.py] Found {} PS ids not present in VCF\n".format(len(warning_set)))
 sys.stderr.write("[strip-nested.py] Filtered {}/{} records\n".format(f_count, t_count))
 
