@@ -8,7 +8,7 @@ INFO field, and the variant from that field is present in the VCF.
 
 import os, sys, gzip
 
-if len(sys.argv) not in [2, 3]:
+if len(sys.argv) not in [2, 3, 4]:
     sys.stderr.write('strip-nested.py: keep only highest-level sites (whose ref-alleles are <= max_allele_len if specified)\n\n')
     sys.stderr.write('usage: {} <vcf> [max_ref_allele_len] [max_alt_allele_len] | bgzip > top-level.vcf.gz \n'.format(sys.argv[0]))
     sys.exit(1)
