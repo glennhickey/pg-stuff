@@ -61,7 +61,7 @@ too_big = too_big.union(big_parents)
 if max_ref_len != sys.maxsize:
     sys.stderr.write("[strip-nested.py] Found {} sites with ref allele length > {}".format(len(too_big), max_ref_len))
     if max_alt_len != sys.maxsize:
-        sys.sderr.write(" or alt length > {}".format(max_alt_len))
+        sys.stderr.write(" or alt length > {}".format(max_alt_len))
     sys.stderr.write(" (or that are parents of such sites)\n")
 
 # pass two: filter out records whose parents are in the file
