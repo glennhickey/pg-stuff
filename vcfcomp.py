@@ -56,15 +56,17 @@ def happy(truth_vcf,
 
 def happy_preprocess(input_vcf,
                      output_vcf,
-                     remove_y = False,
-                     haploid_x = False,
-                     sample = None):
+                     remove_y,
+                     haploid_x,
+                     sample,
+                     max_length):
     """
     hap.py will fail if chrY is diploid (ie .|1).  So we need to flatten it to haploid.  Will also extract
     A sample if given, or just remove Y entirely if specified. 
     """
     tmp_vcf = input_vcf.replace('.vcf', '.c1.vcf'.format('.' + sample if sample else ''))
-    view_cmd = ['bcftools', 'view', input_vcf, '-c', '1', '-Oz']
+    view_cmd = ['bcftools', 'view', input_vcf, '-c', '1', '-Oz',
+                '-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {}'.format(max_length, max_length)]
     if sample:
         view_cmd += ['-as', sample]
     with open(tmp_vcf, 'w') as tmp_vcf_file:
@@ -135,8 +137,76 @@ def happy_chromsplit(happy_vcf):
         output_table[-1].append(str(indel_fn[contig]))
     
     return output_table
-        
-                                         
+
+def truvari(truth_vcf,
+            calls_vcf,
+            ref_fasta,
+            bed_regions,
+            sample,
+            output_dir,
+            options,
+            docker_image):
+    """
+    Run truvari on two vcfs, using the provided reference and bed
+    """
+
+    try:
+        os.makedirs(output_dir)
+    except:
+        pass
+    assert os.path.isdir(output_dir)
+
+    # put everything in the same place
+    for f in [truth_vcf, truth_vcf + '.tbi', calls_vcf, calls_vcf + '.tbi', ref_fasta, ref_fasta + '.fai', bed_regions]:
+        if os.path.isfile(f) and os.path.dirname(f) != output_dir:
+            subprocess.check_call(['ln', '-f', os.path.abspath(f), os.path.abspath(output_dir)])
+
+    # run truvari with docker (to be consistent with hap.py method, tho truvari easy to install with pip)
+    truvari_cmd = ['truvari', 'bench',
+                   '-c', '/data/' + os.path.basename(calls_vcf),
+                   '-b', '/data/' + os.path.basename(truth_vcf),
+                   '--includebed', '/data/' + os.path.basename(bed_regions),
+                   '-f', '/data/' + os.path.basename(ref_fasta),
+                   '-o', '/data/' + os.path.basename(output_dir)]
+    if options:
+        truvari_cmd += options.split()
+
+    subprocess.check_call(['docker', 'run', '-it', '--rm', '-v', os.path.abspath(output_dir) + ':/data', docker_image] + truvari_cmd)
+
+def truvari_chromsplit(truvari_outdir):
+    """ breakdown the truvari vcfs into a per-chromosome table"""
+
+    fp = defaultdict(int)
+    fn = defaultdict(int)
+
+    fp_vcf = os.path.join(truvari_outdir, 'fp.vcf')
+    fp_vcf_file = pysam.VariantFile(fp_vcf, 'r')
+    contigs = set(['_total_'])
+    for var in fp_vcf_file.fetch():
+        contigs.add(var.contig)
+        fp[var.contig] += 1
+        fp['_total_'] += 1
+    fp_vcf_file.close()
+
+    fn_vcf = os.path.join(truvari_outdir, 'fn.vcf')
+    fn_vcf_file = pysam.VariantFile(fn_vcf, 'r')
+    contigs = set(['_total_'])
+    for var in fn_vcf_file.fetch():
+        contigs.add(var.contig)
+        fn[var.contig] += 1
+        fn['_total_'] += 1
+    fn_vcf_file.close()
+
+    output_table = [['type'] + sorted(contigs)]
+    output_table += [['ERRORS'], ['SV-FP'], ['SV-FN']]
+    for contig in sorted(contigs):
+        output_table[-3].append(str(fp[contig] + fn[contig]))
+        output_table[-2].append(str(fp[contig]))
+        output_table[-1].append(str(fn[contig]))
+    
+    return output_table
+
+    
 def main(command_line=None):                     
     parser = argparse.ArgumentParser('VCF Comparison Stuff')
     subparsers = parser.add_subparsers(dest='command')
@@ -150,28 +220,54 @@ def main(command_line=None):
                        help='reference fasta')
     happy_parser.add_argument('--regions', required=True,
                        help='BED regions to evaluate')
-    happy_parser.add_argument('--outDir', required=True,
+    happy_parser.add_argument('--out-dir', required=True,
                        help='output directory')    
     happy_parser.add_argument('--sample',
                        help='subset to this sample')
+    happy_parser.add_argument('--max-length', type=int, default=1000,
+                       help='ignore sites with alleles longer than this [1000]')    
     happy_parser.add_argument('--docker', default='jmcdani20/hap.py:v0.3.12',
                        help='use this docker image instead of the default')
     happy_parser.add_argument('--options', default='--gender=male --pass-only --engine=vcfeval',
                        help='use these options instead of the default (surround in quotes)')
     happy_parser.add_argument('--threads', type=int, default=8,
                        help='number of threads (default=8)')
-    happy_parser.add_argument('--excludeY', action='store_true',
+    happy_parser.add_argument('--exclude-y', action='store_true',
                        help='completely ignore chrY')
 
     happy_breakdown_parser = subparsers.add_parser('happy-breakdown', help='Make chromosome-decomposed table of hap.py results')
     happy_breakdown_parser.add_argument('--vcf', required=True,
                                         help='happy output VCF')
-    
+
+    truvari_parser = subparsers.add_parser('truvari', help='Run truvari')
+    truvari_parser.add_argument('--truth', required=True,
+                       help='true VCF')
+    truvari_parser.add_argument('--calls', required=True,
+                       help='calls VCF')
+    truvari_parser.add_argument('--ref', required=True,
+                       help='reference fasta')
+    truvari_parser.add_argument('--regions', required=True,
+                       help='BED regions to evaluate')
+    truvari_parser.add_argument('--out-dir', required=True,
+                       help='output directory')    
+    truvari_parser.add_argument('--sample',
+                       help='subset to this sample')    
+    truvari_parser.add_argument('--docker', default='solyris/truvari:v5.3',
+                                help='use this docker image instead of the default')
+    truvari_parser.add_argument('--options', default='-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --sizemax 100000  --no-ref c',
+                                help='use these options instead of the default (surround in quotes)')
+    truvari_parser.add_argument('--exclude-y', action='store_true',
+                              help='completely ignore chrY')
+
+    truvari_breakdown_parser = subparsers.add_parser('truvari-breakdown', help='Make chromosome-decomposed table of truvari results')
+    truvari_breakdown_parser.add_argument('--dir', required=True,
+                                        help='truvari output directory')
 
     args = parser.parse_args(command_line)
-    if args.command == 'happy':
-        if not os.path.isdir(args.outDir):
-            os.makedirs(args.outDir)
+
+    if args.command in ['happy', 'truvari']:
+        if not os.path.isdir(args.out_dir):
+            os.makedirs(args.out_dir)
 
         assert args.truth.endswith('.vcf.gz')
         assert args.calls.endswith('.vcf.gz')
@@ -180,23 +276,34 @@ def main(command_line=None):
         assert os.path.isfile(args.calls) and os.path.isfile(args.calls + '.tbi')
         assert os.path.isfile(args.ref) and os.path.isfile(args.regions)
 
+    if args.command == 'happy':
         # run some preprocessing
-        hap_truth = os.path.join(args.outDir, os.path.basename(args.truth.replace('.vcf.gz', '.hap.vcf.gz')))
-        hap_calls = os.path.join(args.outDir, os.path.basename(args.calls.replace('.vcf.gz', '.hap.vcf.gz')))        
-        happy_preprocess(args.truth, hap_truth, remove_y = args.excludeY, sample = args.sample)
-        happy_preprocess(args.calls, hap_calls, remove_y = args.excludeY, sample = args.sample)
+        hap_truth = os.path.join(args.out_dir, os.path.basename(args.truth.replace('.vcf.gz', '.hap.vcf.gz')))
+        hap_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.hap.vcf.gz')))        
+        happy_preprocess(args.truth, hap_truth, remove_y = args.exclude_y, sample = args.sample, max_length = args.max_length)
+        happy_preprocess(args.calls, hap_calls, remove_y = args.exclude_y, sample = args.sample, max_length = args.max_length)
 
         # run happy
-        happy(hap_truth, hap_calls, args.ref, args.regions, args.sample, args.outDir,
+        happy(hap_truth, hap_calls, args.ref, args.regions, args.sample, args.out_dir,
               threads = args.threads,
               options=args.options,
               docker_image = args.docker)
+
+    elif args.command == 'truvari':
+        # run truvari
+        truvari(args.truth, args.calls, args.ref, args.regions, args.sample, args.out_dir,
+                options=args.options,
+                docker_image = args.docker)
 
     elif args.command == 'happy-breakdown':
         table = happy_chromsplit(args.vcf)
         for row in table:
             print('\t'.join(row))
-        
-        
+
+    elif args.command == 'truvari-breakdown':
+        table = truvari_chromsplit(args.dir)
+        for row in table:
+            print('\t'.join(row))
+            
 if __name__ == '__main__':
     main()
