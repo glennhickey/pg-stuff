@@ -7,6 +7,7 @@ import os, sys
 import subprocess
 import pysam
 import argparse
+from collections import defaultdict
 
 def happy(truth_vcf,
           calls_vcf,
@@ -77,7 +78,7 @@ def happy_preprocess(input_vcf,
         skip = 'chry' in var.contig.lower() and remove_y
         flatten = not skip and ('chry' in var.contig.lower() or (haploid_x and 'chrx' in var.contig.lower()))
         if flatten:
-            for sample in var.samples.values:
+            for sample in var.samples.values():
                 gt = sample['GT']
                 assert len(gt) in [1,2]
                 if len(gt) == 2:
@@ -93,8 +94,49 @@ def happy_preprocess(input_vcf,
     
     subprocess.check_call(['tabix', '-fp', 'vcf', output_vcf])
     os.remove(tmp_vcf)
-                                    
-                                   
+
+def happy_chromsplit(happy_vcf):
+    """ breakdown the happy vcf into a per-chromosome table"""
+
+    snp_fp = defaultdict(int)
+    snp_fn = defaultdict(int)
+    indel_fp = defaultdict(int)
+    indel_fn = defaultdict(int)
+
+    vcf_file = pysam.VariantFile(happy_vcf, 'rb')
+    contigs = set(['_total_'])
+    for var in vcf_file.fetch():
+        assert len(var.samples.values()) == 2
+        contigs.add(var.contig)
+        for sample in var.samples.values():
+            bd = sample['BD']
+            bvt = sample['BVT']
+            if bd == 'FP' and bvt == 'SNP':
+                snp_fp[var.contig] += 1
+                snp_fp['_total_'] += 1
+            elif bd == 'FP' and bvt == 'INDEL':
+                indel_fp[var.contig] += 1
+                indel_fp['_total_'] += 1
+            elif bd == 'FN' and bvt == 'SNP':
+                snp_fn[var.contig] += 1
+                snp_fn['_total_'] += 1                
+            elif bd == 'FN' and bvt == 'INDEL':
+                indel_fn[var.contig] += 1
+                indel_fn['_total_'] += 1                
+    vcf_file.close()
+
+    output_table = [['type'] + sorted(contigs)]
+    output_table += [['ERRORS'], ['SNP-FP'], ['SNP-FN'], ['INDEL-FP'], ['INDEL-FN']]
+    for contig in sorted(contigs):
+        output_table[-5].append(str(snp_fp[contig] + snp_fn[contig] + indel_fp[contig] + indel_fn[contig]))
+        output_table[-4].append(str(snp_fp[contig]))
+        output_table[-3].append(str(snp_fn[contig]))
+        output_table[-2].append(str(indel_fp[contig]))
+        output_table[-1].append(str(indel_fn[contig]))
+    
+    return output_table
+        
+                                         
 def main(command_line=None):                     
     parser = argparse.ArgumentParser('VCF Comparison Stuff')
     subparsers = parser.add_subparsers(dest='command')
@@ -121,6 +163,11 @@ def main(command_line=None):
     happy_parser.add_argument('--excludeY', action='store_true',
                        help='completely ignore chrY')
 
+    happy_breakdown_parser = subparsers.add_parser('happy-breakdown', help='Make chromosome-decomposed table of hap.py results')
+    happy_breakdown_parser.add_argument('--vcf', required=True,
+                                        help='happy output VCF')
+    
+
     args = parser.parse_args(command_line)
     if args.command == 'happy':
         if not os.path.isdir(args.outDir):
@@ -144,6 +191,12 @@ def main(command_line=None):
               threads = args.threads,
               options=args.options,
               docker_image = args.docker)
+
+    elif args.command == 'happy-breakdown':
+        table = happy_chromsplit(args.vcf)
+        for row in table:
+            print('\t'.join(row))
+        
         
 if __name__ == '__main__':
     main()
