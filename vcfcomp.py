@@ -68,7 +68,7 @@ def vcf_preprocess(input_vcf,
     tmp_vcf = input_vcf.replace('.vcf', '.c1.vcf'.format('.' + sample if sample else ''))
     view_cmd = ['bcftools', 'view', input_vcf, '-c', '1', '-Oz']
     if max_lenth:
-        view_cmd += '-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {}'.format(max_length, max_length)]
+        view_cmd += ['-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {}'.format(max_length, max_length)]
     if sample:
         view_cmd += ['-as', sample]
     with open(tmp_vcf, 'w') as tmp_vcf_file:
@@ -227,7 +227,21 @@ def download_q100():
         for vartype in ['smvar', 'stvar']:
             for ext in ['benchmark.bed', 'vcf.gz', 'vcf.gz.tbi']:
                 name = '{}_HG2-T2TQ100-V1.1_{}.{}'.format(ref, vartype, ext)
+                sys.stderr.write('Downloading {}\n'.format(name))
                 subprocess.check_call(['wget', '-q', os.path.join(base_url, name), '-O', name])
+
+    sys.stderr.write('Downlading hs1.fa.gz\n')
+    subprocess.check_call(['wget', '-q', 'https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.fa.gz', '-O', 'hs1.fa.gz'])
+
+    sys.stderr.write('Downloading hg38.fa.gz\n')
+    subprocess.check_call(['wget', '-q', 'https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz', '-O', 'hg38.fa.gz'])
+
+    for ref in 'hs1', 'hg38':
+        sys.stderr.write('Indexing {}.fa.gz\n'.format(ref))
+        subprocess.check_call(['gzip', '-fd', '{}.fa.gz'.format(ref)])
+        subprocess.check_call(['bgzip', '--threads', '8', '{}.fa'.format(ref)])
+        subprocess.check_call(['samtools', 'faidx', '{}.fa.gz'.format(ref)])
+                                 
     
 def main(command_line=None):                     
     parser = argparse.ArgumentParser('VCF Comparison Stuff')
