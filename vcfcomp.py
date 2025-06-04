@@ -54,25 +54,36 @@ def happy(truth_vcf,
     subprocess.check_call(['ln', '-sf', os.path.abspath(os.path.join(output_dir, output_dir + '.vcf.gz.tbi')),
                            os.path.abspath(os.path.join(output_dir, 'happy-output.vcf.gz.tbi'))])    
 
-def happy_preprocess(input_vcf,
-                     output_vcf,
-                     remove_y,
-                     haploid_x,
-                     sample,
-                     max_length):
+def vcf_preprocess(input_vcf,
+                   output_vcf,
+                   remove_y,
+                   haploid_x,
+                   sample,
+                   max_length,
+                   bi_allelic):
     """
     hap.py will fail if chrY is diploid (ie .|1).  So we need to flatten it to haploid.  Will also extract
     A sample if given, or just remove Y entirely if specified. 
     """
     tmp_vcf = input_vcf.replace('.vcf', '.c1.vcf'.format('.' + sample if sample else ''))
-    view_cmd = ['bcftools', 'view', input_vcf, '-c', '1', '-Oz',
-                '-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {}'.format(max_length, max_length)]
+    view_cmd = ['bcftools', 'view', input_vcf, '-c', '1', '-Oz']
+    if max_lenth:
+        view_cmd += '-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {}'.format(max_length, max_length)]
     if sample:
         view_cmd += ['-as', sample]
     with open(tmp_vcf, 'w') as tmp_vcf_file:
-        subprocess.check_call(view_cmd, stdout=tmp_vcf_file)
+        subprocess.check_call(view_cmd, stdout=tmp_vcf_file)    
+    if bi_allelic:
+        norm_vcf = tmp_vcf.replace('.vcf', '.biallelic.vcf')
+        with open(norm_vcf, 'w') as norm_vcf_file:
+            subprocess.check_call(['bcftools', 'norm', '-m', '-any', tmp_vcf, '-Oz'],
+                                  stdout=norm_vcf_file)
+        subprocess.check_call(['tabix', '-fp', 'vcf', norm_vcf])
+        os.remove(tmp_vcf)
+        tmp_vcf = norm_vcf
+        
     subprocess.check_call(['tabix', '-fp', 'vcf', tmp_vcf])
-
+    
     tmp_vcf_file = pysam.VariantFile(tmp_vcf, 'rb')
     output_vcf_file = pysam.VariantFile(output_vcf, 'w', header=tmp_vcf_file.header)
 
@@ -206,6 +217,17 @@ def truvari_chromsplit(truvari_outdir):
     
     return output_table
 
+def download_q100():
+    """
+    Get all the benchmark data needed for the draft HG002 Q100 benchmarks
+    """
+    base_url = 'https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.019-20241113/'
+
+    for ref in ['CHM13v2.0', 'GRCh38']:
+        for vartype in ['smvar', 'stvar']:
+            for ext in ['benchmark.bed', 'vcf.gz', 'vcf.gz.tbi']:
+                name = '{}_HG2-T2TQ100-V1.1_{}.{}'.format(ref, vartype, ext)
+                subprocess.check_call(['wget', '-q', os.path.join(base_url, name), '-O', name])
     
 def main(command_line=None):                     
     parser = argparse.ArgumentParser('VCF Comparison Stuff')
@@ -251,7 +273,7 @@ def main(command_line=None):
     truvari_parser.add_argument('--out-dir', required=True,
                        help='output directory')    
     truvari_parser.add_argument('--sample',
-                       help='subset to this sample')    
+                       help='subset to this sample')
     truvari_parser.add_argument('--docker', default='solyris/truvari:v5.3',
                                 help='use this docker image instead of the default')
     truvari_parser.add_argument('--options', default='-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --sizemax 100000  --no-ref c',
@@ -262,6 +284,8 @@ def main(command_line=None):
     truvari_breakdown_parser = subparsers.add_parser('truvari-breakdown', help='Make chromosome-decomposed table of truvari results')
     truvari_breakdown_parser.add_argument('--dir', required=True,
                                         help='truvari output directory')
+
+    hg002_q100_download_parser = subparsers.add_parser('download-q100', help='Download all HG002 t2t-q100 truth set files')
 
     args = parser.parse_args(command_line)
 
@@ -277,20 +301,34 @@ def main(command_line=None):
         assert os.path.isfile(args.ref) and os.path.isfile(args.regions)
 
     if args.command == 'happy':
-        # run some preprocessing
-        hap_truth = os.path.join(args.out_dir, os.path.basename(args.truth.replace('.vcf.gz', '.hap.vcf.gz')))
+        # run some preprocessing (only on calls -- assume truth from giab is ready to go)
         hap_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.hap.vcf.gz')))        
-        happy_preprocess(args.truth, hap_truth, remove_y = args.exclude_y, sample = args.sample, max_length = args.max_length)
-        happy_preprocess(args.calls, hap_calls, remove_y = args.exclude_y, sample = args.sample, max_length = args.max_length)
+        vcf_preprocess(args.calls,
+                       hap_calls,
+                       args.exclude_y,
+                       args.sample,
+                       args.max_length,
+                       True)
 
         # run happy
-        happy(hap_truth, hap_calls, args.ref, args.regions, args.sample, args.out_dir,
+        happy(args.truth, hap_calls, args.ref, args.regions, args.sample, args.out_dir,
               threads = args.threads,
               options=args.options,
               docker_image = args.docker)
 
     elif args.command == 'truvari':
+        # run some preprocessing (only on calls -- assume truth from giab is ready to go)
+        tv_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.tv.vcf.gz')))        
+        vcf_preprocess(args.calls,
+                       hap_calls,
+                       args.exclude_y,
+                       args.sample,
+                       args.max_length,
+                       True)
+
         # run truvari
+        # too scared to have script run rmdir, so user will have to do it first
+        assert not os.path.exists(args.out_dir)
         truvari(args.truth, args.calls, args.ref, args.regions, args.sample, args.out_dir,
                 options=args.options,
                 docker_image = args.docker)
@@ -304,6 +342,9 @@ def main(command_line=None):
         table = truvari_chromsplit(args.dir)
         for row in table:
             print('\t'.join(row))
+
+    elif args.command == 'download-q100':
+        download_q100()
             
 if __name__ == '__main__':
     main()
