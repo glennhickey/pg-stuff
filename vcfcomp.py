@@ -145,9 +145,9 @@ def happy(truth_vcf,
     subprocess.check_call(docker_cmd)
 
     # use Parsa's convention of having a happy.output.vcf.gz
-    subprocess.check_call(['ln', '-sf', os.path.abspath(os.path.join(output_dir, output_dir + '.vcf.gz')),
+    subprocess.check_call(['ln', '-sf', os.path.abspath(os.path.join(output_dir, os.path.basename(output_dir) + '.vcf.gz')),
                            os.path.abspath(os.path.join(output_dir, 'happy-output.vcf.gz'))])
-    subprocess.check_call(['ln', '-sf', os.path.abspath(os.path.join(output_dir, output_dir + '.vcf.gz.tbi')),
+    subprocess.check_call(['ln', '-sf', os.path.abspath(os.path.join(output_dir, os.path.basename(output_dir) + '.vcf.gz.tbi')),
                            os.path.abspath(os.path.join(output_dir, 'happy-output.vcf.gz.tbi'))])    
 
 def happy_chromsplit(happy_vcf):
@@ -241,7 +241,7 @@ def truvari_chromsplit(truvari_outdir):
     fp = defaultdict(int)
     fn = defaultdict(int)
 
-    fp_vcf = os.path.join(truvari_outdir, 'fp.vcf')
+    fp_vcf = os.path.join(truvari_outdir, 'fp.vcf.gz')
     fp_vcf_file = pysam.VariantFile(fp_vcf, 'r')
     contigs = set(['_total_'])
     for var in fp_vcf_file.fetch():
@@ -250,7 +250,7 @@ def truvari_chromsplit(truvari_outdir):
         fp['_total_'] += 1
     fp_vcf_file.close()
 
-    fn_vcf = os.path.join(truvari_outdir, 'fn.vcf')
+    fn_vcf = os.path.join(truvari_outdir, 'fn.vcf.gz')
     fn_vcf_file = pysam.VariantFile(fn_vcf, 'r')
     contigs = set(['_total_'])
     for var in fn_vcf_file.fetch():
@@ -282,6 +282,12 @@ def download_q100(dict_only=False):
                 if not dict_only:
                     sys.stderr.write('Downloading {}\n'.format(name))
                     subprocess.check_call(['wget', '-q', os.path.join(base_url, name), '-O', name])
+                    # hack to drop y from chm13 benchmark
+                    if ref == 'CHM13v2.0' and ext == 'benchmark.bed':
+                        no_y_name = name.replace('.benchmark.bed', '.no.y.benchmark.bed')
+                        with open(no_y_name, 'w') as no_y_bed_file:
+                            subprocess.check_call(['grep', '-v', '^chrY', name], stdout=no_y_bed_file)
+                        name = no_y_name
                 name_dict[(ref, vartype, ext)] = name
 
     if not dict_only:
@@ -303,7 +309,7 @@ def download_q100(dict_only=False):
         #name_dict['hg38'] = 'GCA_000001405.15_GRCh38_no_alt_analysis_set_maskedGRC_exclusions_v2.fasta'
     return name_dict
                                  
-def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, happy_max_length, happy_threads):
+def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, happy_max_length, happy_threads, eval_type):
     """ run q100 hap.py and truvari evaluation on set of input vcfs and
     tabulate the results """
 
@@ -319,63 +325,67 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, happy_max_length, happ
         is_grch38 = i < len(grch38_vcfs)
         happy_out_dir = os.path.join(out_dir, 'happy-' + os.path.basename(vcf.replace('.vcf.gz','')))
         # run hap.py preprocessing
-        hap_calls = os.path.join(happy_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.hap.vcf.gz')))        
-        vcf_preprocess(vcf,
-                       hap_calls,
-                       not is_grch38,
-                       True,
-                       'HG002',
-                       happy_max_length,
-                       False)        
-        # run hap.py
-        happy(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
-              hap_calls,
-              name_dict['hg38' if is_grch38 else 'hs1'],
-              name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'benchmark.bed')],
-              'HG002',
-              happy_out_dir,
-              happy_threads,
-              default_happy_options,
-              default_happy_docker)
+        hap_calls = os.path.join(happy_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.hap.vcf.gz')))
+        if eval_type in ['happy', 'both']:
+            vcf_preprocess(vcf,
+                           hap_calls,
+                           not is_grch38,
+                           True,
+                           'HG002',
+                           happy_max_length,
+                           False)        
+            # run hap.py
+            happy(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
+                  hap_calls,
+                  name_dict['hg38' if is_grch38 else 'hs1'],
+                  name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'benchmark.bed')],
+                  'HG002',
+                  happy_out_dir,
+                  happy_threads,
+                  default_happy_options,
+                  default_happy_docker)
 
-        # run hap.py postprocessing
-        results_table[os.path.basename(happy_out_dir)] = happy_chromsplit(os.path.join(happy_out_dir, 'happy.output.vcf.gz'))        
+            # run hap.py postprocessing
+            results_table[os.path.basename(happy_out_dir)] = happy_chromsplit(os.path.join(happy_out_dir, 'happy-output.vcf.gz'))        
 
-        truvari_out_dir = os.path.join(out_dir, 'truvari-' + os.path.basename(vcf.replace('.vcf.gz','')))
-        # run truvari preprocessing
-        tru_calls = os.path.join(truvari_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.tru.vcf.gz')))
-        vcf_preprocess(vcf,
-                       tru_calls,
-                       not is_grch38,
-                       True,
-                       'HG002',
-                       None,
-                       True)
+        if eval_type in ['truvari', 'both']:
+            truvari_out_dir = os.path.join(out_dir, 'truvari-' + os.path.basename(vcf.replace('.vcf.gz','')))
+            # run truvari preprocessing
+            tru_calls = os.path.join(truvari_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.tru.vcf.gz')))
+            vcf_preprocess(vcf,
+                           tru_calls,
+                           not is_grch38,
+                           True,
+                           'HG002',
+                           None,
+                           True)
         
-        # run truvari
-        truvari(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
-                tru_calls,
-                name_dict['hg38' if is_grch38 else 'hs1'],
-                name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'benchmark.bed')],
-                'HG002',
-                truvari_out_dir,
-                default_truvari_options,
-                default_truvari_docker)
+            # run truvari
+            truvari(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'stvar', 'vcf.gz')],
+                    tru_calls,
+                    name_dict['hg38' if is_grch38 else 'hs1'],
+                    name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'stvar', 'benchmark.bed')],
+                    'HG002',
+                    truvari_out_dir,
+                    default_truvari_options,
+                    default_truvari_docker)
 
-        # run truvari postprocessing
-        results_table[os.path.basename(truvari_out_dir)] = truvari_chromsplit(truvari_out_dir)
+            # run truvari postprocessing
+            results_table[os.path.basename(truvari_out_dir)] = truvari_chromsplit(truvari_out_dir)
 
-    with open(os.path.join(out_dir, 'happy.tsv'), 'w') as happy_file:
-        for k,v in results_table:
-            if 'happy' in k:
-                for line in v:
-                    happy_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
+    if eval_type in ['happy', 'both']:
+        with open(os.path.join(out_dir, 'happy.tsv'), 'w') as happy_file:
+            for k,v in results_table:
+                if 'happy' in k:
+                    for line in v:
+                        happy_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
 
-    with open(os.path.join(out_dir, 'truvari.tsv'), 'w') as truvari_file:
-        for k,v in results_table:
-            if 'truvari' in k:
-                for line in v:
-                    truvari_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
+    if eval_type in ['truvari', 'both']:
+        with open(os.path.join(out_dir, 'truvari.tsv'), 'w') as truvari_file:
+            for k,v in results_table:
+                if 'truvari' in k:
+                    for line in v:
+                        truvari_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
     
 def main(command_line=None):                     
     parser = argparse.ArgumentParser('VCF comparison tools for evaluating pangenome graphs')
@@ -452,6 +462,9 @@ def main(command_line=None):
                                         help='vcfs for HG002-T2T-Q100-GRCh38 evaluation')
     hg002_q100_eval_parser.add_argument('--chm13-vcfs', nargs='*', default=[],
                                         help='vcfs for HG002-T2T-Q100-GRCh38 evaluation')
+    hg002_q100_eval_parser.add_argument('--eval-type', default='both', choices = ['happy', 'truvari', 'both'],
+                                        help='evaluation to run, can be happy, truvari or both')        
+    
 
     args = parser.parse_args(command_line)
 
@@ -519,7 +532,8 @@ def main(command_line=None):
                   args.chm13_vcfs,
                   args.download,
                   args.happy_max_length,
-                  args.happy_threads)
+                  args.happy_threads,
+                  args.eval_type)
 
             
 if __name__ == '__main__':
