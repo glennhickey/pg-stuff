@@ -30,6 +30,78 @@ import argparse
 import shutil
 from collections import defaultdict
 
+default_happy_docker = 'jmcdani20/hap.py:v0.3.12'
+default_happy_options = '--gender=male --pass-only --engine=vcfeval'
+default_happy_max_length = 100
+default_truvari_docker = 'solyris/truvari:v5.3'
+default_truvari_options = '-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --sizemax 100000 --no-ref c'
+
+def vcf_preprocess(input_vcf,
+                   output_vcf,
+                   remove_y,
+                   haploid_x,
+                   sample,
+                   max_length,
+                   bi_allelic):
+    """
+    hap.py will fail if chrY is diploid (ie .|1).  So we need to flatten it to haploid.  Will also extract
+    A sample if given, or just remove Y entirely if specified. 
+    """
+
+    output_dir = os.path.dirname(output_vcf)
+    try:
+        os.makedirs(output_dir)
+    except:
+        pass
+    assert os.path.isdir(output_dir)
+
+    tmp_vcf = output_vcf.replace('.vcf', '.c1.vcf'.format('.' + sample if sample else ''))
+    view_cmd = ['bcftools', 'view', input_vcf, '-c', '1', '-Oz']
+    if max_length:
+        view_cmd += ['-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {}'.format(max_length, max_length)]
+    if sample:
+        view_cmd += ['-as', sample]
+    with open(tmp_vcf, 'w') as tmp_vcf_file:
+        sys.stderr.write('Running vcf preprocessing: {}\n'.format(' '.join(view_cmd)))
+        subprocess.check_call(view_cmd, stdout=tmp_vcf_file)    
+    if bi_allelic:
+        sys.stderr.write('Splitting into bi-allelic variants\n')
+        norm_vcf = tmp_vcf.replace('.vcf', '.biallelic.vcf')
+        with open(norm_vcf, 'w') as norm_vcf_file:
+            subprocess.check_call(['bcftools', 'norm', '-m', '-any', tmp_vcf, '-Oz'],
+                                  stdout=norm_vcf_file)
+        subprocess.check_call(['tabix', '-fp', 'vcf', norm_vcf])
+        os.remove(tmp_vcf)
+        tmp_vcf = norm_vcf
+        
+    subprocess.check_call(['tabix', '-fp', 'vcf', tmp_vcf])
+    
+    tmp_vcf_file = pysam.VariantFile(tmp_vcf, 'rb')
+    output_vcf_file = pysam.VariantFile(output_vcf, 'w', header=tmp_vcf_file.header)
+
+    sys.stderr.write('Correcting/removing chrX,chrY,chrM GTs\n')
+    for var in tmp_vcf_file.fetch():
+        skip = 'chry' in var.contig.lower() and remove_y or 'chrm' in var.contig.lower()
+        flatten = not skip and ('chry' in var.contig.lower() or (haploid_x and 'chrx' in var.contig.lower()))
+        if flatten:
+            for sample in var.samples.values():
+                gt = sample['GT']
+                assert len(gt) in [1,2]
+                if len(gt) == 2:
+                    hap_gt = gt[0]
+                    if hap_gt == '.' and gt[1] != '.':
+                        hap_gt = gt[1]
+                    sample['GT'] = tuple([hap_gt])
+        if not skip:
+            output_vcf_file.write(var)
+
+    tmp_vcf_file.close()
+    output_vcf_file.close()
+    
+    subprocess.check_call(['tabix', '-fp', 'vcf', output_vcf])
+    os.remove(tmp_vcf)
+    os.remove(tmp_vcf + '.tbi')
+
 def happy(truth_vcf,
           calls_vcf,
           ref_fasta,
@@ -56,8 +128,8 @@ def happy(truth_vcf,
 
     # run hap.py with docker (and since it's python2 only, it's pretty much the only way to run it these days)
     happy_cmd = ['/opt/hap.py/bin/hap.py',
-                 '/data/' + os.path.basename(calls_vcf),
                  '/data/' + os.path.basename(truth_vcf),
+                 '/data/' + os.path.basename(calls_vcf),                 
                  '-f', '/data/' + os.path.basename(bed_regions),
                  '-r', '/data/' + os.path.basename(ref_fasta),
                  '--threads', str(threads),
@@ -67,72 +139,15 @@ def happy(truth_vcf,
 
     docker_cmd = ['docker', 'run', '-it', '--rm',
                   '-u', '{}:{}'.format(os.getuid(), os.getgid()),
-                  '-v', os.path.abspath(output_dir) + ':/data', docker_image, ' '.join(happy_cmd)]
+                  '-v', os.path.abspath(output_dir) + ':/data', docker_image] + happy_cmd
     print(docker_cmd)
-    subprocess.check_call(['docker', 'run', '-it', '--rm', '-v', os.path.abspath(output_dir) + ':/data', docker_image] + happy_cmd)
+    subprocess.check_call(docker_cmd)
 
     # use Parsa's convention of having a happy.output.vcf.gz
     subprocess.check_call(['ln', '-sf', os.path.abspath(os.path.join(output_dir, output_dir + '.vcf.gz')),
                            os.path.abspath(os.path.join(output_dir, 'happy-output.vcf.gz'))])
     subprocess.check_call(['ln', '-sf', os.path.abspath(os.path.join(output_dir, output_dir + '.vcf.gz.tbi')),
                            os.path.abspath(os.path.join(output_dir, 'happy-output.vcf.gz.tbi'))])    
-
-def vcf_preprocess(input_vcf,
-                   output_vcf,
-                   remove_y,
-                   haploid_x,
-                   sample,
-                   max_length,
-                   bi_allelic):
-    """
-    hap.py will fail if chrY is diploid (ie .|1).  So we need to flatten it to haploid.  Will also extract
-    A sample if given, or just remove Y entirely if specified. 
-    """
-    tmp_vcf = input_vcf.replace('.vcf', '.c1.vcf'.format('.' + sample if sample else ''))
-    view_cmd = ['bcftools', 'view', input_vcf, '-c', '1', '-Oz']
-    if max_length:
-        view_cmd += ['-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {}'.format(max_length, max_length)]
-    if sample:
-        view_cmd += ['-as', sample]
-    with open(tmp_vcf, 'w') as tmp_vcf_file:
-        sys.stderr.write('Running vcf preprocessing: {}\n'.format(' '.join(view_cmd)))
-        subprocess.check_call(view_cmd, stdout=tmp_vcf_file)    
-    if bi_allelic:
-        sys.stderr.write('Splitting into bi-allelic variants\n')
-        norm_vcf = tmp_vcf.replace('.vcf', '.biallelic.vcf')
-        with open(norm_vcf, 'w') as norm_vcf_file:
-            subprocess.check_call(['bcftools', 'norm', '-m', '-any', tmp_vcf, '-Oz'],
-                                  stdout=norm_vcf_file)
-        subprocess.check_call(['tabix', '-fp', 'vcf', norm_vcf])
-        os.remove(tmp_vcf)
-        tmp_vcf = norm_vcf
-        
-    subprocess.check_call(['tabix', '-fp', 'vcf', tmp_vcf])
-    
-    tmp_vcf_file = pysam.VariantFile(tmp_vcf, 'rb')
-    output_vcf_file = pysam.VariantFile(output_vcf, 'w', header=tmp_vcf_file.header)
-
-    sys.stderr.write('Correcting sex chromosome GTs\n')
-    for var in tmp_vcf_file.fetch():
-        skip = 'chry' in var.contig.lower() and remove_y
-        flatten = not skip and ('chry' in var.contig.lower() or (haploid_x and 'chrx' in var.contig.lower()))
-        if flatten:
-            for sample in var.samples.values():
-                gt = sample['GT']
-                assert len(gt) in [1,2]
-                if len(gt) == 2:
-                    hap_gt = gt[0]
-                    if hap_gt == '.' and gt[1] != '.':
-                        hap_gt = gt[1]
-                    sample['GT'] = tuple([hap_gt])
-        if not skip:
-            output_vcf_file.write(var)
-
-    tmp_vcf_file.close()
-    output_vcf_file.close()
-    
-    subprocess.check_call(['tabix', '-fp', 'vcf', output_vcf])
-    os.remove(tmp_vcf)
 
 def happy_chromsplit(happy_vcf):
     """ breakdown the happy vcf into a per-chromosome table"""
@@ -186,7 +201,6 @@ def truvari(truth_vcf,
     """
     Run truvari on two vcfs, using the provided reference and bed
     """
-
     try:
         os.makedirs(output_dir)
     except:
@@ -195,9 +209,8 @@ def truvari(truth_vcf,
 
     # truvari needs a non-existent output directory
     tv_dir = os.path.join(output_dir, 'tv')
-    if os.path.isdir(tv_dir):
+    if os.path.exists(tv_dir):
         shutil.rmtree(tv_dir)
-    os.makedirs(tv_dir)
 
     # put everything in the same place
     for f in [truth_vcf, truth_vcf + '.tbi', calls_vcf, calls_vcf + '.tbi', ref_fasta, ref_fasta + '.fai', bed_regions]:
@@ -210,7 +223,7 @@ def truvari(truth_vcf,
                    '-b', '/data/' + os.path.basename(truth_vcf),
                    '--includebed', '/data/' + os.path.basename(bed_regions),
                    '-f', '/data/' + os.path.basename(ref_fasta),
-                   '-o', '/data/tv/' + os.path.basename(output_dir)]
+                   '-o', '/data/tv/']
     if options:
         truvari_cmd += options.split()
 
@@ -218,7 +231,7 @@ def truvari(truth_vcf,
                            '-u', '{}:{}'.format(os.getuid(), os.getgid()),
                            '-v', os.path.abspath(output_dir) + ':/data', docker_image] + truvari_cmd)
 
-    subprocess.check_call('mv {}/* {}'.format(tv_dir, output_dir))
+    subprocess.check_call('mv {}/* {}'.format(tv_dir, output_dir), shell=True)
     shutil.rmtree(tv_dir)
 
 def truvari_chromsplit(truvari_outdir):
@@ -254,34 +267,117 @@ def truvari_chromsplit(truvari_outdir):
     
     return output_table
 
-def download_q100():
+def download_q100(dict_only=False):
     """
     Get all the benchmark data needed for the draft HG002 Q100 benchmarks
     """
     base_url = 'https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.019-20241113/'
 
+    name_dict = {}
     for ref in ['CHM13v2.0', 'GRCh38']:
         for vartype in ['smvar', 'stvar']:
             for ext in ['benchmark.bed', 'vcf.gz', 'vcf.gz.tbi']:
                 name = '{}_HG2-T2TQ100-V1.1_{}.{}'.format(ref, vartype, ext)
-                sys.stderr.write('Downloading {}\n'.format(name))
-                subprocess.check_call(['wget', '-q', os.path.join(base_url, name), '-O', name])
+                if not dict_only:
+                    sys.stderr.write('Downloading {}\n'.format(name))
+                    subprocess.check_call(['wget', '-q', os.path.join(base_url, name), '-O', name])
+                name_dict[(ref, vartype, ext)] = name
 
-    sys.stderr.write('Downlading hs1.fa.gz\n')
-    subprocess.check_call(['wget', '-q', 'https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.fa.gz', '-O', 'hs1.fa.gz'])
+    if not dict_only:
+        sys.stderr.write('Downlading hs1.fa.gz\n')
+        subprocess.check_call(['wget', '-q', 'https://hgdownload.soe.ucsc.edu/goldenPath/hs1/bigZips/hs1.fa.gz', '-O', 'hs1.fa.gz'])
 
-    sys.stderr.write('Downloading hg38.fa.gz\n')
-    subprocess.check_call(['wget', '-q', 'https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz', '-O', 'hg38.fa.gz'])
+        sys.stderr.write('Downloading hg38.fa.gz\n')
+        subprocess.check_call(['wget', '-q', 'https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz', '-O', 'hg38.fa.gz'])
 
     for ref in 'hs1', 'hg38':
         # note: I'm pretty sure hap.py doesn't work properly with compressed references
-        sys.stderr.write('Indexing {}.fa\n'.format(ref))
-        subprocess.check_call(['gzip', '-fd', '{}.fa.gz'.format(ref)])
-        subprocess.check_call(['samtools', 'faidx', '{}.fa'.format(ref)])
+        if not dict_only:
+            sys.stderr.write('Indexing {}.fa\n'.format(ref))
+            subprocess.check_call(['gzip', '-fd', '{}.fa.gz'.format(ref)])
+            subprocess.check_call(['samtools', 'faidx', '{}.fa'.format(ref)])
+        name_dict[ref] = '{}.fa'.format(ref)
+
+        #hack
+        #name_dict['hg38'] = 'GCA_000001405.15_GRCh38_no_alt_analysis_set_maskedGRC_exclusions_v2.fasta'
+    return name_dict
                                  
+def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, happy_max_length, happy_threads):
+    """ run q100 hap.py and truvari evaluation on set of input vcfs and
+    tabulate the results """
+
+    name_dict = download_q100(dict_only = not download)
+
+    if not os.path.exists(out_dir):
+        os.makedirs(out_dir)
+    assert os.path.isdir(out_dir)
+
+    results_table = {}
+
+    for i, vcf in enumerate(grch38_vcfs + chm13_vcfs):
+        is_grch38 = i < len(grch38_vcfs)
+        happy_out_dir = os.path.join(out_dir, 'happy-' + os.path.basename(vcf.replace('.vcf.gz','')))
+        # run hap.py preprocessing
+        hap_calls = os.path.join(happy_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.hap.vcf.gz')))        
+        vcf_preprocess(vcf,
+                       hap_calls,
+                       not is_grch38,
+                       True,
+                       'HG002',
+                       happy_max_length,
+                       False)        
+        # run hap.py
+        happy(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
+              hap_calls,
+              name_dict['hg38' if is_grch38 else 'hs1'],
+              name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'benchmark.bed')],
+              'HG002',
+              happy_out_dir,
+              happy_threads,
+              default_happy_options,
+              default_happy_docker)
+
+        # run hap.py postprocessing
+        results_table[os.path.basename(happy_out_dir)] = happy_chromsplit(os.path.join(happy_out_dir, 'happy.output.vcf.gz'))        
+
+        truvari_out_dir = os.path.join(out_dir, 'truvari-' + os.path.basename(vcf.replace('.vcf.gz','')))
+        # run truvari preprocessing
+        tru_calls = os.path.join(truvari_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.tru.vcf.gz')))
+        vcf_preprocess(vcf,
+                       tru_calls,
+                       not is_grch38,
+                       True,
+                       'HG002',
+                       None,
+                       True)
+        
+        # run truvari
+        truvari(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
+                tru_calls,
+                name_dict['hg38' if is_grch38 else 'hs1'],
+                name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'benchmark.bed')],
+                'HG002',
+                truvari_out_dir,
+                default_truvari_options,
+                default_truvari_docker)
+
+        # run truvari postprocessing
+        results_table[os.path.basename(truvari_out_dir)] = truvari_chromsplit(truvari_out_dir)
+
+    with open(os.path.join(out_dir, 'happy.tsv'), 'w') as happy_file:
+        for k,v in results_table:
+            if 'happy' in k:
+                for line in v:
+                    happy_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
+
+    with open(os.path.join(out_dir, 'truvari.tsv'), 'w') as truvari_file:
+        for k,v in results_table:
+            if 'truvari' in k:
+                for line in v:
+                    truvari_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
     
 def main(command_line=None):                     
-    parser = argparse.ArgumentParser('VCF Comparison Stuff')
+    parser = argparse.ArgumentParser('VCF comparison tools for evaluating pangenome graphs')
     subparsers = parser.add_subparsers(dest='command')
     
     happy_parser = subparsers.add_parser('happy', help='Run hap.py')
@@ -297,11 +393,11 @@ def main(command_line=None):
                        help='output directory')    
     happy_parser.add_argument('--sample',
                        help='subset to this sample')
-    happy_parser.add_argument('--max-length', type=int, default=1000,
-                       help='ignore sites with alleles longer than this [1000]')    
-    happy_parser.add_argument('--docker', default='jmcdani20/hap.py:v0.3.12',
+    happy_parser.add_argument('--max-length', type=int, default=default_happy_max_length,
+                       help='ignore sites with alleles longer than this')    
+    happy_parser.add_argument('--docker', default=default_happy_docker,
                        help='use this docker image instead of the default')
-    happy_parser.add_argument('--options', default='--gender=male --pass-only --engine=vcfeval',
+    happy_parser.add_argument('--options', default=default_happy_options,
                        help='use these options instead of the default (surround in quotes)')
     happy_parser.add_argument('--threads', type=int, default=8,
                        help='number of threads (default=8)')
@@ -327,9 +423,9 @@ def main(command_line=None):
                        help='output directory')    
     truvari_parser.add_argument('--sample',
                        help='subset to this sample')
-    truvari_parser.add_argument('--docker', default='solyris/truvari:v5.3',
+    truvari_parser.add_argument('--docker', default=default_truvari_docker,
                                 help='use this docker image instead of the default')
-    truvari_parser.add_argument('--options', default='-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --sizemax 100000  --no-ref c',
+    truvari_parser.add_argument('--options', default=default_truvari_options,
                                 help='use these options instead of the default (surround in quotes)')
     truvari_parser.add_argument('--haploid-x', action='store_true',
                               help='make sure chrX is haploid')    
@@ -341,6 +437,20 @@ def main(command_line=None):
                                         help='truvari output directory')
 
     hg002_q100_download_parser = subparsers.add_parser('download-q100', help='Download all HG002 t2t-q100 truth set files')
+
+    hg002_q100_eval_parser = subparsers.add_parser('eval-q100', help='Run t2t-q100 HG002 evaluation on some graphs')
+    hg002_q100_eval_parser.add_argument('--download', action='store_true',
+                                        help='automatically download benchmark data into current directory')
+    hg002_q100_eval_parser.add_argument('--out-dir',  required=True,
+                                        help='automatically download benchmark data into current directory')
+    hg002_q100_eval_parser.add_argument('--happy-max-length', type=int, default=default_happy_max_length,
+                                        help='ignore sites with alleles longer than this')
+    hg002_q100_eval_parser.add_argument('--happy-threads', type=int, default=8,
+                                        help='number of threads (default=8)')    
+    hg002_q100_eval_parser.add_argument('--grch38-vcfs', nargs='*', default=[],
+                                        help='vcfs for HG002-T2T-Q100-GRCh38 evaluation')
+    hg002_q100_eval_parser.add_argument('--chm13-vcfs', nargs='*', default=[],
+                                        help='vcfs for HG002-T2T-Q100-GRCh38 evaluation')
 
     args = parser.parse_args(command_line)
 
@@ -401,6 +511,15 @@ def main(command_line=None):
 
     elif args.command == 'download-q100':
         download_q100()
+
+    elif args.command == 'eval-q100':
+        eval_q100(args.out_dir,
+                  args.grch38_vcfs,
+                  args.chm13_vcfs,
+                  args.download,
+                  args.happy_max_length,
+                  args.happy_threads)
+
             
 if __name__ == '__main__':
     main()
