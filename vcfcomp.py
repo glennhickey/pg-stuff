@@ -1,12 +1,33 @@
 #!/usr/bin/env python3
 """
 VCF comparison with hap.py and truvari, alongiside some postproecssing functions
+
+Requirements:  * python3 environment with pysam installed
+               * bcftools, samtools and tabix
+               * docker
+
+Example:
+
+vcfcomp.py download-q100
+
+vcfcomp.py happy --truth CHM13v2.0_HG2-T2TQ100-V1.1_smvar.vcf.gz \
+ --calls hprc-v2.0-mc-chm13.wave.vcf.gz --ref hs1.fa \
+ --regions CHM13v2.0_HG2-T2TQ100-V1.1_smvar.benchmark.bed \
+ --out-dir happy-hprc-v2.0-mc-chm13.HG002.wave --sample HG002 \
+ --threads 8 --exclude-y --max-length 50
+
+vcfcomp.py happy-breakdown --vcf happy-hprc-v2.0-mc-chm13.HG002.wave/happy.output.vcf.gz
+
+
+
+
 """
 
 import os, sys
 import subprocess
 import pysam
 import argparse
+import shutil
 from collections import defaultdict
 
 def happy(truth_vcf,
@@ -44,7 +65,9 @@ def happy(truth_vcf,
     if options:
         happy_cmd += options.split()
 
-    docker_cmd = ['docker', 'run', '-it', '--rm', '-v', os.path.abspath(output_dir) + ':/data', docker_image, ' '.join(happy_cmd)]
+    docker_cmd = ['docker', 'run', '-it', '--rm',
+                  '-u', '{}:{}'.format(os.getuid(), os.getgid()),
+                  '-v', os.path.abspath(output_dir) + ':/data', docker_image, ' '.join(happy_cmd)]
     print(docker_cmd)
     subprocess.check_call(['docker', 'run', '-it', '--rm', '-v', os.path.abspath(output_dir) + ':/data', docker_image] + happy_cmd)
 
@@ -67,13 +90,15 @@ def vcf_preprocess(input_vcf,
     """
     tmp_vcf = input_vcf.replace('.vcf', '.c1.vcf'.format('.' + sample if sample else ''))
     view_cmd = ['bcftools', 'view', input_vcf, '-c', '1', '-Oz']
-    if max_lenth:
+    if max_length:
         view_cmd += ['-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {}'.format(max_length, max_length)]
     if sample:
         view_cmd += ['-as', sample]
     with open(tmp_vcf, 'w') as tmp_vcf_file:
+        sys.stderr.write('Running vcf preprocessing: {}\n'.format(' '.join(view_cmd)))
         subprocess.check_call(view_cmd, stdout=tmp_vcf_file)    
     if bi_allelic:
+        sys.stderr.write('Splitting into bi-allelic variants\n')
         norm_vcf = tmp_vcf.replace('.vcf', '.biallelic.vcf')
         with open(norm_vcf, 'w') as norm_vcf_file:
             subprocess.check_call(['bcftools', 'norm', '-m', '-any', tmp_vcf, '-Oz'],
@@ -87,6 +112,7 @@ def vcf_preprocess(input_vcf,
     tmp_vcf_file = pysam.VariantFile(tmp_vcf, 'rb')
     output_vcf_file = pysam.VariantFile(output_vcf, 'w', header=tmp_vcf_file.header)
 
+    sys.stderr.write('Correcting sex chromosome GTs\n')
     for var in tmp_vcf_file.fetch():
         skip = 'chry' in var.contig.lower() and remove_y
         flatten = not skip and ('chry' in var.contig.lower() or (haploid_x and 'chrx' in var.contig.lower()))
@@ -167,6 +193,12 @@ def truvari(truth_vcf,
         pass
     assert os.path.isdir(output_dir)
 
+    # truvari needs a non-existent output directory
+    tv_dir = os.path.join(output_dir, 'tv')
+    if os.path.isdir(tv_dir):
+        shutil.rmtree(tv_dir)
+    os.makedirs(tv_dir)
+
     # put everything in the same place
     for f in [truth_vcf, truth_vcf + '.tbi', calls_vcf, calls_vcf + '.tbi', ref_fasta, ref_fasta + '.fai', bed_regions]:
         if os.path.isfile(f) and os.path.dirname(f) != output_dir:
@@ -178,11 +210,16 @@ def truvari(truth_vcf,
                    '-b', '/data/' + os.path.basename(truth_vcf),
                    '--includebed', '/data/' + os.path.basename(bed_regions),
                    '-f', '/data/' + os.path.basename(ref_fasta),
-                   '-o', '/data/' + os.path.basename(output_dir)]
+                   '-o', '/data/tv/' + os.path.basename(output_dir)]
     if options:
         truvari_cmd += options.split()
 
-    subprocess.check_call(['docker', 'run', '-it', '--rm', '-v', os.path.abspath(output_dir) + ':/data', docker_image] + truvari_cmd)
+    subprocess.check_call(['docker', 'run', '-it', '--rm',
+                           '-u', '{}:{}'.format(os.getuid(), os.getgid()),
+                           '-v', os.path.abspath(output_dir) + ':/data', docker_image] + truvari_cmd)
+
+    subprocess.check_call('mv {}/* {}'.format(tv_dir, output_dir))
+    shutil.rmtree(tv_dir)
 
 def truvari_chromsplit(truvari_outdir):
     """ breakdown the truvari vcfs into a per-chromosome table"""
@@ -237,10 +274,10 @@ def download_q100():
     subprocess.check_call(['wget', '-q', 'https://hgdownload.soe.ucsc.edu/goldenPath/hg38/bigZips/hg38.fa.gz', '-O', 'hg38.fa.gz'])
 
     for ref in 'hs1', 'hg38':
-        sys.stderr.write('Indexing {}.fa.gz\n'.format(ref))
+        # note: I'm pretty sure hap.py doesn't work properly with compressed references
+        sys.stderr.write('Indexing {}.fa\n'.format(ref))
         subprocess.check_call(['gzip', '-fd', '{}.fa.gz'.format(ref)])
-        subprocess.check_call(['bgzip', '--threads', '8', '{}.fa'.format(ref)])
-        subprocess.check_call(['samtools', 'faidx', '{}.fa.gz'.format(ref)])
+        subprocess.check_call(['samtools', 'faidx', '{}.fa'.format(ref)])
                                  
     
 def main(command_line=None):                     
@@ -268,6 +305,8 @@ def main(command_line=None):
                        help='use these options instead of the default (surround in quotes)')
     happy_parser.add_argument('--threads', type=int, default=8,
                        help='number of threads (default=8)')
+    happy_parser.add_argument('--haploid-x', action='store_true',
+                              help='make sure chrX is haploid')    
     happy_parser.add_argument('--exclude-y', action='store_true',
                        help='completely ignore chrY')
 
@@ -292,6 +331,8 @@ def main(command_line=None):
                                 help='use this docker image instead of the default')
     truvari_parser.add_argument('--options', default='-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --sizemax 100000  --no-ref c',
                                 help='use these options instead of the default (surround in quotes)')
+    truvari_parser.add_argument('--haploid-x', action='store_true',
+                              help='make sure chrX is haploid')    
     truvari_parser.add_argument('--exclude-y', action='store_true',
                               help='completely ignore chrY')
 
@@ -315,11 +356,13 @@ def main(command_line=None):
         assert os.path.isfile(args.ref) and os.path.isfile(args.regions)
 
     if args.command == 'happy':
+        assert not args.ref.endswith('.gz')
         # run some preprocessing (only on calls -- assume truth from giab is ready to go)
         hap_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.hap.vcf.gz')))        
         vcf_preprocess(args.calls,
                        hap_calls,
                        args.exclude_y,
+                       args.haploid_x,
                        args.sample,
                        args.max_length,
                        True)
@@ -334,16 +377,15 @@ def main(command_line=None):
         # run some preprocessing (only on calls -- assume truth from giab is ready to go)
         tv_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.tv.vcf.gz')))        
         vcf_preprocess(args.calls,
-                       hap_calls,
+                       tv_calls,
                        args.exclude_y,
+                       args.haploid_x,
                        args.sample,
-                       args.max_length,
+                       None,
                        True)
 
         # run truvari
-        # too scared to have script run rmdir, so user will have to do it first
-        assert not os.path.exists(args.out_dir)
-        truvari(args.truth, args.calls, args.ref, args.regions, args.sample, args.out_dir,
+        truvari(args.truth, tv_calls, args.ref, args.regions, args.sample, args.out_dir,
                 options=args.options,
                 docker_image = args.docker)
 
