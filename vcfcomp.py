@@ -81,7 +81,7 @@ def vcf_preprocess(input_vcf,
 
     sys.stderr.write('Correcting/removing chrX,chrY,chrM GTs\n')
     for var in tmp_vcf_file.fetch():
-        skip = 'chry' in var.contig.lower() and remove_y or 'chrm' in var.contig.lower()
+        skip = ('chry' in var.contig.lower() and remove_y) or 'chrm' in var.contig.lower()
         flatten = not skip and ('chry' in var.contig.lower() or (haploid_x and 'chrx' in var.contig.lower()))
         if flatten:
             for sample in var.samples.values():
@@ -89,9 +89,10 @@ def vcf_preprocess(input_vcf,
                 assert len(gt) in [1,2]
                 if len(gt) == 2:
                     hap_gt = gt[0]
-                    if hap_gt == '.' and gt[1] != '.':
+                    if hap_gt in ['.', None] and gt[1] not in ['.', None]:
                         hap_gt = gt[1]
                     sample['GT'] = tuple([hap_gt])
+                                     
         if not skip:
             output_vcf_file.write(var)
 
