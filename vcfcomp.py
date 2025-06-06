@@ -34,7 +34,10 @@ default_happy_docker = 'jmcdani20/hap.py:v0.3.12'
 default_happy_options = '--gender=male --pass-only --engine=vcfeval'
 default_happy_max_length = 100
 default_truvari_docker = 'solyris/truvari:v5.3'
-default_truvari_options = '-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --sizemax 100000 --no-ref c'
+#these ones are from hprc v1 paper (but using --pick multi instead of --multimatch)
+default_truvari_options = '-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --sizemax 100000 --no-ref c --pick multi'
+# these are from https://ftp-trace.ncbi.nlm.nih.gov/ReferenceSamples/giab/data/AshkenazimTrio/analysis/NIST_HG002_DraftBenchmark_defrabbV0.019-20241113/NIST_HG002_DraftBenchmark_defrabbV0.019-20241113_README.md
+#default_truvari_options = '--pick ac --passonly -r 2000 -C 5000'
 default_vcfeval_docker = 'kockan/vcfeval_docker:v1.1'
 default_vcfeval_options = '--decompose --ref-overlap'
 
@@ -416,7 +419,8 @@ def download_q100(dict_only=False):
         #name_dict['hg38'] = 'GCA_000001405.15_GRCh38_no_alt_analysis_set_maskedGRC_exclusions_v2.fasta'
     return name_dict
                                  
-def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, eval_type):
+def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, eval_type,
+              happy_options, truvari_options, vcfeval_options):
     """ run q100 hap.py and truvari evaluation on set of input vcfs and
     tabulate the results """
 
@@ -449,7 +453,7 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
                   'HG002',
                   happy_out_dir,
                   threads,
-                  default_happy_options,
+                  happy_options,
                   default_happy_docker)
 
             # run hap.py postprocessing
@@ -474,7 +478,7 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
                     name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'stvar', 'benchmark.bed')],
                     'HG002',
                     truvari_out_dir,
-                    default_truvari_options,
+                    truvari_options,
                     default_truvari_docker)
 
             # run truvari postprocessing
@@ -499,7 +503,7 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
                     'HG002',
                     vcfeval_out_dir,
                     threads,
-                    default_vcfeval_options,
+                    vcfeval_options,
                     default_vcfeval_docker)
 
             # run hap.py postprocessing
@@ -626,7 +630,13 @@ def main(command_line=None):
                                         help='vcfs for HG002-T2T-Q100-GRCh38 evaluation')
     hg002_q100_eval_parser.add_argument('--eval-type', nargs='+', default=['vcfeval', 'truvari'],
                                         choices = ['happy', 'truvari', 'vcfeval'],
-                                        help='evaluation to run in {happy, truvari, vcfeval}, multiple allowed')        
+                                        help='evaluation to run in {happy, truvari, vcfeval}, multiple allowed')
+    hg002_q100_eval_parser.add_argument('--happy-options', default=default_happy_options,
+                                        help='use these options instead of the default (surround in quotes)')    
+    hg002_q100_eval_parser.add_argument('--truvari-options', default=default_truvari_options,
+                                        help='use these options instead of the default (surround in quotes)')
+    hg002_q100_eval_parser.add_argument('--vcfeval-options', default=default_vcfeval_options,
+                                        help='use these options instead of the default (surround in quotes)')
     
 
     args = parser.parse_args(command_line)
@@ -719,7 +729,10 @@ def main(command_line=None):
                   args.download,
                   args.max_length,
                   args.threads,
-                  args.eval_type)
+                  args.eval_type,
+                  args.happy_options,
+                  args.truvari_options,
+                  args.vcfeval_options)
 
             
 if __name__ == '__main__':
