@@ -35,6 +35,8 @@ default_happy_options = '--gender=male --pass-only --engine=vcfeval'
 default_happy_max_length = 100
 default_truvari_docker = 'solyris/truvari:v5.3'
 default_truvari_options = '-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --sizemax 100000 --no-ref c'
+default_vcfeval_docker = 'kockan/vcfeval_docker:v1.1'
+default_vcfeval_options = '--decompose --ref-overlap'
 
 def vcf_preprocess(input_vcf,
                    output_vcf,
@@ -268,6 +270,111 @@ def truvari_chromsplit(truvari_outdir):
     
     return output_table
 
+def vcfeval(truth_vcf,
+            calls_vcf,
+            ref_fasta,
+            bed_regions,
+            sample,
+            output_dir,
+            threads,
+            options,
+            docker_image):
+    """
+    Run rtg vcfeval on two vcfs, using the provided reference and bed
+    """
+
+    try:
+        os.makedirs(output_dir)
+    except:
+        pass
+    assert os.path.isdir(output_dir)
+
+    # vcfeval needs a non-existent output directory
+    ve_dir = os.path.join(output_dir, 've')
+    if os.path.exists(ve_dir):
+        shutil.rmtree(ve_dir)
+
+    # put everything in the same place
+    for f in [truth_vcf, truth_vcf + '.tbi', calls_vcf, calls_vcf + '.tbi', ref_fasta, ref_fasta + '.fai', bed_regions]:
+        if os.path.isfile(f) and os.path.dirname(f) != output_dir:
+            subprocess.check_call(['ln', '-f', os.path.abspath(f), os.path.abspath(output_dir)])
+
+    docker_cmd = ['docker', 'run', '-it', '--rm',
+                  '-u', '{}:{}'.format(os.getuid(), os.getgid()),
+                  '-v', os.path.abspath(output_dir) + ':/data', docker_image]
+        
+    # make the sdf (todo: should have option to pass this in to avoid recomputing)
+    ref_name = os.path.basename(ref_fasta)
+    if not ref_name.endswith('.SDF'):
+        ref_name = 'ref.SDF'
+        if os.path.exists(os.path.join(output_dir, ref_name)):
+            shutil.rmtree(os.path.join(output_dir, ref_name))
+        subprocess.check_call(docker_cmd + ['rtg', 'format', '/data/' + os.path.basename(ref_fasta),
+                                            '-o', '/data/' + ref_name])
+    # run vcfeval 
+    vcfeval_cmd = ['rtg', 'vcfeval',
+                   '-b', '/data/' + os.path.basename(truth_vcf),
+                   '-c', '/data/' + os.path.basename(calls_vcf),                 
+                   '-e', '/data/' + os.path.basename(bed_regions),
+                   '-t', '/data/' + ref_name,
+                   '--threads', str(threads),
+                   '-o', '/data/' + os.path.basename(ve_dir)]
+    if options:
+        vcfeval_cmd += options.split()
+    subprocess.check_call(docker_cmd + vcfeval_cmd)
+
+    subprocess.check_call('mv {}/* {}'.format(ve_dir, output_dir), shell=True)
+    shutil.rmtree(ve_dir)
+
+def vcfeval_chromsplit(truvari_outdir):
+    """ breakdown the truvari vcfs into a per-chromosome table"""
+
+    snp_fp = defaultdict(int)
+    snp_fn = defaultdict(int)
+    indel_fp = defaultdict(int)
+    indel_fn = defaultdict(int)
+
+    def is_snp(var):
+        """ note: this isn't very sophisticated and may differe from hap.py's sense quite a bit """
+        return all(len(a) == len(var.alleles[0]) for a in var.alleles)
+    
+    fp_vcf = os.path.join(truvari_outdir, 'fp.vcf.gz')
+    fp_vcf_file = pysam.VariantFile(fp_vcf, 'r')
+    contigs = set(['_total_'])
+    for var in fp_vcf_file.fetch():        
+        contigs.add(var.contig)
+        if is_snp(var):
+            snp_fp[var.contig] += 1
+            snp_fp['_total_'] += 1
+        else:
+            indel_fp[var.contig] += 1
+            indel_fp['_total_'] += 1
+    fp_vcf_file.close()
+
+    fn_vcf = os.path.join(truvari_outdir, 'fn.vcf.gz')
+    fn_vcf_file = pysam.VariantFile(fn_vcf, 'r')
+    contigs = set(['_total_'])
+    for var in fn_vcf_file.fetch():
+        contigs.add(var.contig)
+        if is_snp(var):
+            snp_fn[var.contig] += 1
+            snp_fn['_total_'] += 1
+        else:
+            indel_fn[var.contig] += 1
+            indel_fn['_total_'] += 1
+    fn_vcf_file.close()
+
+    output_table = [['type'] + sorted(contigs)]
+    output_table += [['ERRORS'], ['SNP-FP'], ['SNP-FN'], ['INDEL-FP'], ['INDEL-FN']]
+    for contig in sorted(contigs):
+        output_table[-5].append(str(snp_fp[contig] + snp_fn[contig] + indel_fp[contig] + indel_fn[contig]))
+        output_table[-4].append(str(snp_fp[contig]))
+        output_table[-3].append(str(snp_fn[contig]))
+        output_table[-2].append(str(indel_fp[contig]))
+        output_table[-1].append(str(indel_fn[contig]))
+    
+    return output_table
+    
 def download_q100(dict_only=False):
     """
     Get all the benchmark data needed for the draft HG002 Q100 benchmarks
@@ -309,7 +416,7 @@ def download_q100(dict_only=False):
         #name_dict['hg38'] = 'GCA_000001405.15_GRCh38_no_alt_analysis_set_maskedGRC_exclusions_v2.fasta'
     return name_dict
                                  
-def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, happy_max_length, happy_threads, eval_type):
+def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, eval_type):
     """ run q100 hap.py and truvari evaluation on set of input vcfs and
     tabulate the results """
 
@@ -326,13 +433,13 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, happy_max_length, happ
         happy_out_dir = os.path.join(out_dir, 'happy-' + os.path.basename(vcf.replace('.vcf.gz','')))
         # run hap.py preprocessing
         hap_calls = os.path.join(happy_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.hap.vcf.gz')))
-        if eval_type in ['happy', 'both']:
+        if 'happy' in eval_type:
             vcf_preprocess(vcf,
                            hap_calls,
                            not is_grch38,
                            True,
                            'HG002',
-                           happy_max_length,
+                           max_length,
                            False)        
             # run hap.py
             happy(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
@@ -341,14 +448,14 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, happy_max_length, happ
                   name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'benchmark.bed')],
                   'HG002',
                   happy_out_dir,
-                  happy_threads,
+                  threads,
                   default_happy_options,
                   default_happy_docker)
 
             # run hap.py postprocessing
-            results_table[os.path.basename(happy_out_dir)] = happy_chromsplit(os.path.join(happy_out_dir, 'happy-output.vcf.gz'))        
+            results_table[os.path.basename(happy_out_dir)] = happy_chromsplit(os.path.join(happy_out_dir, 'happy-output.vcf.gz'))   
 
-        if eval_type in ['truvari', 'both']:
+        if 'truvari' in eval_type:
             truvari_out_dir = os.path.join(out_dir, 'truvari-' + os.path.basename(vcf.replace('.vcf.gz','')))
             # run truvari preprocessing
             tru_calls = os.path.join(truvari_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.tru.vcf.gz')))
@@ -373,14 +480,39 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, happy_max_length, happ
             # run truvari postprocessing
             results_table[os.path.basename(truvari_out_dir)] = truvari_chromsplit(truvari_out_dir)
 
-    if eval_type in ['happy', 'both']:
+        if 'vcfeval' in eval_type:
+            vcfeval_out_dir = os.path.join(out_dir, 'vcfeval-' + os.path.basename(vcf.replace('.vcf.gz','')))
+            # run hap.py preprocessing
+            hap_calls = os.path.join(vcfeval_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.hap.vcf.gz')))            
+            vcf_preprocess(vcf,
+                           hap_calls,
+                           not is_grch38,
+                           True,
+                           'HG002',
+                           max_length,
+                           False)        
+            # run hap.py
+            vcfeval(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
+                    hap_calls,
+                    name_dict['hg38' if is_grch38 else 'hs1'],
+                    name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'benchmark.bed')],
+                    'HG002',
+                    vcfeval_out_dir,
+                    threads,
+                    default_vcfeval_options,
+                    default_vcfeval_docker)
+
+            # run hap.py postprocessing
+            results_table[os.path.basename(vcfeval_out_dir)] = vcfeval_chromsplit(vcfeval_out_dir)
+
+    if 'happy' in eval_type:
         with open(os.path.join(out_dir, 'happy.tsv'), 'w') as happy_file:
             for k,v in results_table.items():
                 if 'happy' in k:
                     for line in v:
                         happy_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
 
-    if eval_type in ['truvari', 'both']:
+    if 'truvari' in eval_type:
         with open(os.path.join(out_dir, 'truvari.tsv'), 'w') as truvari_file:
             for k,v in results_table.items():
                 if 'truvari' in k:
@@ -447,6 +579,36 @@ def main(command_line=None):
     truvari_breakdown_parser.add_argument('--dir', required=True,
                                         help='truvari output directory')
 
+    vcfeval_parser = subparsers.add_parser('vcfeval', help='Run rtg vcfeval')
+    vcfeval_parser.add_argument('--truth', required=True,
+                       help='true VCF')
+    vcfeval_parser.add_argument('--calls', required=True,
+                       help='calls VCF')
+    vcfeval_parser.add_argument('--ref', required=True,
+                       help='reference fasta (or save time by passing in a .SDF from rtg format)')
+    vcfeval_parser.add_argument('--regions', required=True,
+                       help='BED regions to evaluate')
+    vcfeval_parser.add_argument('--out-dir', required=True,
+                       help='output directory')
+    vcfeval_parser.add_argument('--max-length', type=int, default=default_happy_max_length,
+                                help='ignore sites with alleles longer than this')        
+    vcfeval_parser.add_argument('--sample',
+                       help='subset to this sample')
+    vcfeval_parser.add_argument('--docker', default=default_vcfeval_docker,
+                                help='use this docker image instead of the default')
+    vcfeval_parser.add_argument('--threads', type=int, default=8,
+                                help='number of threads (default=8)')    
+    vcfeval_parser.add_argument('--options', default=default_vcfeval_options,
+                                help='use these options instead of the default (surround in quotes)')
+    vcfeval_parser.add_argument('--haploid-x', action='store_true',
+                              help='make sure chrX is haploid')    
+    vcfeval_parser.add_argument('--exclude-y', action='store_true',
+                              help='completely ignore chrY')
+    
+    vcfeval_breakdown_parser = subparsers.add_parser('vcfeval-breakdown', help='Make chromosome-decomposed table of vcfeval results')
+    vcfeval_breakdown_parser.add_argument('--dir', required=True,
+                                        help='vcfeval output directory')
+    
     hg002_q100_download_parser = subparsers.add_parser('download-q100', help='Download all HG002 t2t-q100 truth set files')
 
     hg002_q100_eval_parser = subparsers.add_parser('eval-q100', help='Run t2t-q100 HG002 evaluation on some graphs')
@@ -454,21 +616,22 @@ def main(command_line=None):
                                         help='automatically download benchmark data into current directory')
     hg002_q100_eval_parser.add_argument('--out-dir',  required=True,
                                         help='automatically download benchmark data into current directory')
-    hg002_q100_eval_parser.add_argument('--happy-max-length', type=int, default=default_happy_max_length,
-                                        help='ignore sites with alleles longer than this')
-    hg002_q100_eval_parser.add_argument('--happy-threads', type=int, default=8,
-                                        help='number of threads (default=8)')    
+    hg002_q100_eval_parser.add_argument('--max-length', type=int, default=default_happy_max_length,
+                                        help='ignore sites with alleles longer than this (does not apply to truvari)')
+    hg002_q100_eval_parser.add_argument('--threads', type=int, default=8,
+                                        help='number of threads (does not apply to truvari) (default=8)')    
     hg002_q100_eval_parser.add_argument('--grch38-vcfs', nargs='*', default=[],
                                         help='vcfs for HG002-T2T-Q100-GRCh38 evaluation')
     hg002_q100_eval_parser.add_argument('--chm13-vcfs', nargs='*', default=[],
                                         help='vcfs for HG002-T2T-Q100-GRCh38 evaluation')
-    hg002_q100_eval_parser.add_argument('--eval-type', default='both', choices = ['happy', 'truvari', 'both'],
-                                        help='evaluation to run, can be happy, truvari or both')        
+    hg002_q100_eval_parser.add_argument('--eval-type', nargs='+', default=['vcfeval', 'truvari'],
+                                        choices = ['happy', 'truvari', 'vcfeval'],
+                                        help='evaluation to run in {happy, truvari, vcfeval}, multiple allowed')        
     
 
     args = parser.parse_args(command_line)
 
-    if args.command in ['happy', 'truvari']:
+    if args.command in ['happy', 'truvari', 'vcfeval']:
         if not os.path.isdir(args.out_dir):
             os.makedirs(args.out_dir)
 
@@ -513,6 +676,24 @@ def main(command_line=None):
                 options=args.options,
                 docker_image = args.docker)
 
+    if args.command == 'vcfeval':
+        assert not args.ref.endswith('.gz')
+        # run some preprocessing (only on calls -- assume truth from giab is ready to go)
+        hap_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.hap.vcf.gz')))        
+        vcf_preprocess(args.calls,
+                       hap_calls,
+                       args.exclude_y,
+                       args.haploid_x,
+                       args.sample,
+                       args.max_length,
+                       False)
+
+        # run vcfeval
+        vcfeval(args.truth, hap_calls, args.ref, args.regions, args.sample, args.out_dir,
+                threads = args.threads,
+                options=args.options,
+                docker_image = args.docker)        
+
     elif args.command == 'happy-breakdown':
         table = happy_chromsplit(args.vcf)
         for row in table:
@@ -523,6 +704,11 @@ def main(command_line=None):
         for row in table:
             print('\t'.join(row))
 
+    elif args.command == 'vcfeval-breakdown':
+        table = vcfeval_chromsplit(args.dir)
+        for row in table:
+            print('\t'.join(row))
+            
     elif args.command == 'download-q100':
         download_q100()
 
@@ -531,8 +717,8 @@ def main(command_line=None):
                   args.grch38_vcfs,
                   args.chm13_vcfs,
                   args.download,
-                  args.happy_max_length,
-                  args.happy_threads,
+                  args.max_length,
+                  args.threads,
                   args.eval_type)
 
             
