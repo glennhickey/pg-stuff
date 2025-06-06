@@ -375,14 +375,14 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, happy_max_length, happ
 
     if eval_type in ['happy', 'both']:
         with open(os.path.join(out_dir, 'happy.tsv'), 'w') as happy_file:
-            for k,v in results_table:
+            for k,v in results_table.items():
                 if 'happy' in k:
                     for line in v:
                         happy_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
 
     if eval_type in ['truvari', 'both']:
         with open(os.path.join(out_dir, 'truvari.tsv'), 'w') as truvari_file:
-            for k,v in results_table:
+            for k,v in results_table.items():
                 if 'truvari' in k:
                     for line in v:
                         truvari_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
