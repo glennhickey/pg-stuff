@@ -32,7 +32,7 @@ from collections import defaultdict
 
 default_happy_docker = 'jmcdani20/hap.py:v0.3.12'
 default_happy_options = '--gender=male --pass-only --engine=vcfeval'
-default_happy_max_length = 100
+default_happy_max_length = 1000
 default_truvari_docker = 'solyris/truvari:v5.3'
 #these ones are from hprc v1 paper (but using --pick multi instead of --multimatch)
 default_truvari_options = '-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --sizemax 100000 --no-ref c --pick multi'
@@ -509,19 +509,12 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
             # run hap.py postprocessing
             results_table[os.path.basename(vcfeval_out_dir)] = vcfeval_chromsplit(vcfeval_out_dir)
 
-    if 'happy' in eval_type:
-        with open(os.path.join(out_dir, 'happy.tsv'), 'w') as happy_file:
+    for et in eval_type:
+        with open(os.path.join(out_dir, '{}.tsv'.format(et)), 'w') as et_file:
             for k,v in results_table.items():
-                if 'happy' in k:
+                if et in k:
                     for line in v:
-                        happy_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
-
-    if 'truvari' in eval_type:
-        with open(os.path.join(out_dir, 'truvari.tsv'), 'w') as truvari_file:
-            for k,v in results_table.items():
-                if 'truvari' in k:
-                    for line in v:
-                        truvari_file.write('{}\t{}\n'.format(k, '\t'.join(line)))
+                        et_file.write('{}\t{}\n'.format(k, '\t'.join(line)))                        
     
 def main(command_line=None):                     
     parser = argparse.ArgumentParser('VCF comparison tools for evaluating pangenome graphs')
