@@ -28,7 +28,7 @@ cat ${OUTPUT_DIR}/*.fa > ${OUTPUT_FA}
 cat ${OUTPUT_DIR}/*.fa.nesting.tsv > ${OUTPUT_FA}.nesting.tsv
 
 bcftools concat ${OUTPUT_DIR}/*.vcf.gz | bgzip > ${OUTPUT_NAME}
-tabix -fp vcf ${OUTPUT_NAME}.vcf.gz
+tabix -fp vcf ${OUTPUT_NAME}
 rm -rf ${OUTPUT_DIR}
     
     
