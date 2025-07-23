@@ -17,7 +17,7 @@ for VG in ${VG_DIR}/*.vg; do
 	BASE=${BASE::-3}
 	VCF=${OUTPUT_DIR}/${BASE}.${REF}.${L}.vcf.gz
 	FASTA=${OUTPUT_DIR}/${BASE}.${REF}.${L}.fa
-	$sbatch -W ./slurm-deconstruct-one.sh $VG "-n -L ${L} -P ${REF} -f ${FASTA}" $VCF &
+	sbatch -W ./slurm-deconstruct-one.sh $VG "-n -L ${L} -P ${REF} -f ${FASTA}" $VCF &
 	#./slurm-deconstruct-one.sh $VG "-n -L ${L} -P ${REF} -f ${FASTA}" $VCF &
     fi
 done
