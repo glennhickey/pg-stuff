@@ -12,8 +12,8 @@ mkdir -p $OUTPUT_DIR
 rm -rf ${OUTPUT_DIR}/*.vcf*
 
 for VG in ${VG_DIR}/*.vg; do
-    if [[ $VG != "chrY.vg" && $VG != "chrM.vg" && $VG != "chrOther.vg" ]]; then
-	BASE=$(basename $VG)
+    BASE=$(basename $VG)
+    if [[ $BASE != "chrY.vg" && $BASE != "chrM.vg" && $BASE != "chrOther.vg" ]]; then
 	BASE=${BASE::-3}
 	VCF=${OUTPUT_DIR}/${BASE}.${REF}.${L}.vcf.gz
 	FASTA=${OUTPUT_DIR}/${BASE}.${REF}.${L}.fa
