@@ -43,11 +43,13 @@ default_vcfeval_options = '--decompose --ref-overlap'
 
 def vcf_preprocess(input_vcf,
                    output_vcf,
+                   ref_fasta,
                    remove_y,
                    haploid_x,
                    sample,
                    max_length,
-                   bi_allelic):
+                   bi_allelic,
+                   normalize):
     """
     hap.py will fail if chrY is diploid (ie .|1).  So we need to flatten it to haploid.  Will also extract
     A sample if given, or just remove Y entirely if specified. 
@@ -75,6 +77,15 @@ def vcf_preprocess(input_vcf,
         with open(norm_vcf, 'w') as norm_vcf_file:
             subprocess.check_call(['bcftools', 'norm', '-m', '-any', tmp_vcf, '-Oz'],
                                   stdout=norm_vcf_file)
+        subprocess.check_call(['tabix', '-fp', 'vcf', norm_vcf])
+        os.remove(tmp_vcf)
+        tmp_vcf = norm_vcf
+    if normalize:
+        sys.stderr.write('Normalizing indels with bcftools\n')
+        norm_vcf = tmp_vcf.replace('.vcf', '.norm.vcf')
+        with open(norm_vcf, 'w') as norm_vcf_file:
+            subprocess.check_call(f'bcftools norm -f {ref_fasta} {tmp_vcf} -Oz -D -cw | bcftools sort | bgzip',
+                                  stdout=norm_vcf_file, shell=True)
         subprocess.check_call(['tabix', '-fp', 'vcf', norm_vcf])
         os.remove(tmp_vcf)
         tmp_vcf = norm_vcf
@@ -440,11 +451,13 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
         if 'happy' in eval_type:
             vcf_preprocess(vcf,
                            hap_calls,
+                           name_dict['hg38' if is_grch38 else 'hs1'],
                            not is_grch38,
                            True,
                            'HG002',
                            max_length,
-                           False)        
+                           False,
+                           True)        
             # run hap.py
             happy(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
                   hap_calls,
@@ -465,10 +478,12 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
             tru_calls = os.path.join(truvari_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.tru.vcf.gz')))
             vcf_preprocess(vcf,
                            tru_calls,
+                           name_dict['hg38' if is_grch38 else 'hs1'],
                            not is_grch38,
                            True,
                            'HG002',
                            None,
+                           True,
                            True)
         
             # run truvari
@@ -490,11 +505,13 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
             hap_calls = os.path.join(vcfeval_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.hap.vcf.gz')))            
             vcf_preprocess(vcf,
                            hap_calls,
+                           name_dict['hg38' if is_grch38 else 'hs1'],
                            not is_grch38,
                            True,
                            'HG002',
                            max_length,
-                           False)        
+                           False,
+                           True)        
             # run hap.py
             vcfeval(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
                     hap_calls,
@@ -651,10 +668,12 @@ def main(command_line=None):
         hap_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.hap.vcf.gz')))        
         vcf_preprocess(args.calls,
                        hap_calls,
+                       args.ref,
                        args.exclude_y,
                        args.haploid_x,
                        args.sample,
                        args.max_length,
+                       True,
                        True)
 
         # run happy
@@ -668,10 +687,12 @@ def main(command_line=None):
         tv_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.tv.vcf.gz')))        
         vcf_preprocess(args.calls,
                        tv_calls,
+                       args.ref,
                        args.exclude_y,
                        args.haploid_x,
                        args.sample,
                        None,
+                       True,
                        True)
 
         # run truvari
@@ -685,11 +706,13 @@ def main(command_line=None):
         hap_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.hap.vcf.gz')))        
         vcf_preprocess(args.calls,
                        hap_calls,
+                       args.ref,
                        args.exclude_y,
                        args.haploid_x,
                        args.sample,
                        args.max_length,
-                       False)
+                       False,
+                       True)
 
         # run vcfeval
         vcfeval(args.truth, hap_calls, args.ref, args.regions, args.sample, args.out_dir,
