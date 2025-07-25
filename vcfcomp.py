@@ -84,7 +84,7 @@ def vcf_preprocess(input_vcf,
         sys.stderr.write('Normalizing indels with bcftools\n')
         norm_vcf = tmp_vcf.replace('.vcf', '.norm.vcf')
         with open(norm_vcf, 'w') as norm_vcf_file:
-            subprocess.check_call(f'bcftools norm -f {ref_fasta} {tmp_vcf} -Oz -D -cw | bcftools sort | bgzip',
+            subprocess.check_call(f'bcftools norm -f {ref_fasta} {tmp_vcf} -Oz -d exact -cw | bcftools sort | bgzip',
                                   stdout=norm_vcf_file, shell=True)
         subprocess.check_call(['tabix', '-fp', 'vcf', norm_vcf])
         os.remove(tmp_vcf)
