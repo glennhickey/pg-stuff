@@ -20,6 +20,8 @@ def main(command_line=None):
                         help='Input VCF (from vg deconstruct -n)')
     parser.add_argument('--fasta', required=True,
                         help='Input FASTA (from vg decontruct -f)')
+    parser.add_argument('--keep-dots', action='store_true', default=False,
+                        help='Do not convert dots to underscores in contig names (warning pangenie\'s prepare script needs this)')
     options = parser.parse_args(command_line)
 
     # get all the contig (intervals) from the FASTA and index them
@@ -43,16 +45,16 @@ def main(command_line=None):
     vcf_file = pysam.VariantFile(options.vcf, 'rb' if options.vcf.endswith('.gz') else 'r')
     header = str(vcf_file.header)
     for line in header.split('\n'):
-        printed = False
         if line.startswith('##contig=') and line.endswith('>'):
             contig = line[10:-2].split(',')[0][3:]
+            fixed_contig = contig if options.keep_dots else contig.replace('.', '_')
             if contig in contig_dict:
-                printed = True
                 for interval in contig_dict[contig]:
-                    print(f'##contig=<ID={contig}[{interval.begin}-{interval.end}],length={interval.end-interval.begin}>')
+                    print(f'##contig=<ID={fixed_contig}[{interval.begin}-{interval.end}],length={interval.end-interval.begin}>')
             else:
                 sys.stderr.write(f'contig {contig} not in header\n')
-        if not printed:
+                print(line if options.keep_dots else line.replace('.', '_'))
+        else:
             print(line)
             
     # print the corrected records
