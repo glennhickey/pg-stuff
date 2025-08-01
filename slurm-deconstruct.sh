@@ -13,7 +13,7 @@ rm -rf ${OUTPUT_DIR}/*.vcf*
 
 for VG in ${VG_DIR}/*.vg; do
     BASE=$(basename $VG)
-    if [[ $BASE != "chrY.vg" && $BASE != "chrM.vg" && $BASE != "chrOther.vg" ]]; then
+    if [[ $BASE != "chrY.vg" && $BASE != "chrM.vg" && $BASE != "chrOther.vg" && $BASE != "chrEBV.vg" ]]; then
 	BASE=${BASE::-3}
 	VCF=${OUTPUT_DIR}/${BASE}.${REF}.${L}.vcf.gz
 	FASTA=${OUTPUT_DIR}/${BASE}.${REF}.${L}.fa
@@ -31,4 +31,4 @@ bcftools concat ${OUTPUT_DIR}/*.vcf.gz | bgzip > ${OUTPUT_NAME}
 tabix -fp vcf ${OUTPUT_NAME}
 rm -rf ${OUTPUT_DIR}
     
-    
+ 

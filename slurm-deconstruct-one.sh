@@ -31,6 +31,8 @@
 #
 ## Command(s) to run (example):
 
+set -ex
+
 VG=$1
 #make sure these come in inside quotes!
 OPTS=$2
