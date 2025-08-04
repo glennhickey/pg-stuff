@@ -61,10 +61,9 @@ def main(command_line=None):
         if line.startswith('##contig=') and line.endswith('>'):
             contig = line[10:-2].split(',')[0][3:]
             fixed_contig = contig if options.keep_dots else contig.replace('.', '_')
-            fixed_contig = fixed_contig.replace('[', '_').replace(']', '')
             if contig in contig_dict:
                 for interval in contig_dict[contig]:
-                    print(f'##contig=<ID={fixed_contig}[{interval.begin}-{interval.end}],length={interval.end-interval.begin}>')
+                    print(f'##contig=<ID={fixed_contig}_{interval.begin}-{interval.end},length={interval.end-interval.begin}>')
             else:
                 sys.stderr.write(f'contig {contig} not in header\n')
                 line = line.replace('[', '_').replace(']', '_')
@@ -80,7 +79,7 @@ def main(command_line=None):
             # take biggest interval
             ilens = [(i.end - i.begin) for i in intervals]
             interval = intervals[ilens.index(min(ilens))]
-            var_str = '\t'.join([f'{var.contig}[{interval.begin}-{interval.end}]',
+            var_str = '\t'.join([f'{var.contig}_{interval.begin}-{interval.end}',
                                  str(var.pos - interval.begin)] + str(var).split('\t')[2:])
         else:
             var_str = str(var)
