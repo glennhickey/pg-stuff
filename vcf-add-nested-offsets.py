@@ -22,11 +22,15 @@ def main(command_line=None):
                         help='Input FASTA (from vg decontruct -f)')
     parser.add_argument('--keep-dots', action='store_true', default=False,
                         help='Do not convert dots to underscores in contig names (warning pangenie\'s prepare script needs this)')
+    parser.add_argument('--renamed-fasta', 
+                        help='Output renamed fasta file')
     options = parser.parse_args(command_line)
 
     # get all the contig (intervals) from the FASTA and index them
     contig_dict = {}
     f = gzip.open(options.fasta, 'rb') if options.fasta.endswith('.gz') else open(options.fasta, 'r')
+    if options.renamed_fasta:
+        fo = gzip.open(options.renamed_fasta, 'wb') if options.renamed_fasta.endswith('.gz') else open(options.renamed_fasta, 'w')
     num_records = 0
     for record in SeqIO.parse(f, 'fasta'):
         if '[' in record.id and record.id.endswith(']'):
@@ -39,6 +43,15 @@ def main(command_line=None):
             interval_tree[int(interval[0]):int(interval[1])] = record.id
             contig_dict[contig_name] = interval_tree
             num_records += 1
+        if options.renamed_fasta:
+            if not options.keep_dots:
+                record.id = record.id.replace('.', '_')
+            record.id = record.id.replace('[', '_').replace(']', '')
+            record.description = ''
+            SeqIO.write(record, fo, 'fasta')
+    f.close()
+    fo.close()
+            
     sys.stderr.write(f'found {num_records} intervals in {len(contig_dict)} base contigs\n')
 
     # print the corrected VCF header
@@ -48,11 +61,13 @@ def main(command_line=None):
         if line.startswith('##contig=') and line.endswith('>'):
             contig = line[10:-2].split(',')[0][3:]
             fixed_contig = contig if options.keep_dots else contig.replace('.', '_')
+            fixed_contig = fixed_contig.replace('[', '_').replace(']', '')
             if contig in contig_dict:
                 for interval in contig_dict[contig]:
                     print(f'##contig=<ID={fixed_contig}[{interval.begin}-{interval.end}],length={interval.end-interval.begin}>')
             else:
                 sys.stderr.write(f'contig {contig} not in header\n')
+                line = line.replace('[', '_').replace(']', '_')
                 print(line if options.keep_dots else line.replace('.', '_'))
         else:
             print(line)
