@@ -62,13 +62,13 @@ def main(command_line=None):
     options = parser.parse_args(command_line)
 
     download_from_table(cat_idx_url, 4, options.threads, 'hprc-v2-genes.bed', gff=True)
-    add_local(hg38_genes_path, 'hprc-v2-sd.bed', 'hprc-v2-sd-grch38.bed', 'GRCh38#0', True, 3)
+    add_local(hg38_genes_path, 'hprc-v2-sd.bed', 'hprc-v2-genes-grch38.bed', 'GRCh38#0', True, 3)
     
     download_from_table(rm_idx_url, 4, options.threads, 'hprc-v2-rm.bed')
-    add_local('/home/hick, 'hprc-v2-rm.bed', 'hprc-v2-rm-grch38.bed', 'GRCh38#0', False, 6)
+    add_local(hg38_rm_path, 'hprc-v2-rm.bed', 'hprc-v2-rm-grch38.bed', 'GRCh38#0', False, 6)
 
     download_from_table(sd_idx_url, 4, options.threads, 'hprc-v2-sd.bed')
-    add_local(hg38_rm_path, 'hprc-v2-sd.bed', 'hprc-v2-sd-grch38.bed', 'GRCh38#0', True, 3)
+    add_local(hg38_sd_path, 'hprc-v2-sd.bed', 'hprc-v2-sd-grch38.bed', 'GRCh38#0', True, 3)
     
 
     
