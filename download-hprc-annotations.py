@@ -38,7 +38,7 @@ def download_from_table(table_url, column, threads, out_annot_path, gff=False):
                 subprocess.check_call(f'cat {annot_path} {gff_cmd} >> {out_annot_path}', shell=True)
                 subprocess.check_call(['rm', '-f', annot_path])
 
-    subprocess.check_call(f'bedtools sort -i {out_annot_path} > {out_annot_path}.tmp', shell=True)
+    subprocess.check_call(f'cat {out_annot_path} | sort -k1,1 -k2,2n  > {out_annot_path}.tmp', shell=True)
     subprocess.check_call(['mv', out_annot_path + '.tmp', out_annot_path])
     
 def add_local(local_path, annot_path, out_path, prefix, merge=False, max_col=-1):
@@ -52,7 +52,7 @@ def add_local(local_path, annot_path, out_path, prefix, merge=False, max_col=-1)
                 capped_line = '\t'.join(line.strip().split()[:max_col])
                 out_file.write(capped_line + '\n')
     merge_cmd = ' | bedtools merge' if merge else ''
-    subprocess.check_call(f'bedtools sort -i {out_path} {merge_cmd} > {out_path}.tmp', shell=True)
+    subprocess.check_call(f'cat {out_path} | sort -k1,1 -k2,2n {merge_cmd} > {out_path}.tmp', shell=True)
     subprocess.check_call(['mv', out_path + '.tmp', out_path])
 
 def main(command_line=None):                     
