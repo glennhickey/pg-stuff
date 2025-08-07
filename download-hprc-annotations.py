@@ -27,14 +27,14 @@ def download_from_table(table_url, column, threads, out_annot_path, gff=False):
         return
     
     subprocess.check_call(['wget', table_url, '-O', os.path.basename(table_url)])
-    subprocess.check_call(f'grep s3 {os.path.basename(table_url)} | dos2unix | awk -F "," \'{{print ${column}}}\' | parallel -j {threads} "aws s3 cp {{}} ."', shell=True)
+    subprocess.check_call(f'grep s3 {os.path.basename(table_url)} | dos2unix | awk -F "," \'{{print ${column}}}\' | parallel -j {threads} "aws s3 cp --no-sign-request --no-progress {{}} ."', shell=True)
 
     subprocess.check_call(['rm', '-f', out_annot_path])
     with open(os.path.basename(table_url)) as table_file:
         for line in table_file:
             if 's3' in line:
                 annot_path = os.path.basename(line.split(',')[column-1].strip())
-                gff_cmd = ' | cut -f1,4,5' if gff else ''
+                gff_cmd = ' | cut -f1,4,5 | bedtools sort | bedtools merge' if gff else ''
                 subprocess.check_call(f'cat {annot_path} {gff_cmd} >> {out_annot_path}', shell=True)
                 subprocess.check_call(['rm', '-f', annot_path])
 
@@ -62,7 +62,7 @@ def main(command_line=None):
     options = parser.parse_args(command_line)
 
     download_from_table(cat_idx_url, 4, options.threads, 'hprc-v2-genes.bed', gff=True)
-    add_local(hg38_genes_path, 'hprc-v2-sd.bed', 'hprc-v2-genes-grch38.bed', 'GRCh38#0', True, 3)
+    add_local(hg38_genes_path, 'hprc-v2-genes.bed', 'hprc-v2-genes-grch38.bed', 'GRCh38#0', True, 3)
     
     download_from_table(rm_idx_url, 4, options.threads, 'hprc-v2-rm.bed')
     add_local(hg38_rm_path, 'hprc-v2-rm.bed', 'hprc-v2-rm-grch38.bed', 'GRCh38#0', False, 6)
