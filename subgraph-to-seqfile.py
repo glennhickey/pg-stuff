@@ -49,7 +49,7 @@ def main(command_line=None):
     with open(commands, 'w') as commands_file:
         for hap in haplotypes:
             filename = os.path.join(args.fa_dir, hap.replace('#', '.') + '.fa.gz')
-            commands_file.write(f'vg paths -x {args.subgraph} -F -Q "{hap}#" | sed -e "s/#0$//g" | bgzip > {filename}\n')
+            commands_file.write(f'vg paths -x {args.subgraph} -F -Q "{hap}#" | sed -e "s/#0$//g" | sed -e "s/#0\\]/\\]/g" |  bgzip > {filename}\n')
             print('{}\t{}'.format(hap.replace('#', '.'), filename))
 
     subprocess.check_call(f'cat {commands} | parallel -j {args.threads} {{}}', shell=True) 
