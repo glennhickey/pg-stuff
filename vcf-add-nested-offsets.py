@@ -50,10 +50,11 @@ def main(command_line=None):
             record.description = ''
             SeqIO.write(record, fo, 'fasta')
     f.close()
-    fo.close()
+    if options.renamed_fasta:
+        fo.close()
             
     sys.stderr.write(f'found {num_records} intervals in {len(contig_dict)} base contigs\n')
-
+    
     # print the corrected VCF header
     vcf_file = pysam.VariantFile(options.vcf, 'rb' if options.vcf.endswith('.gz') else 'r')
     header = str(vcf_file.header)
@@ -68,8 +69,8 @@ def main(command_line=None):
                 sys.stderr.write(f'contig {contig} not in header\n')
                 line = line.replace('[', '_').replace(']', '_')
                 print(line if options.keep_dots else line.replace('.', '_'))
-        else:
-            print(line)
+        elif len(line.strip()) > 1:
+            print(line.strip())
             
     # print the corrected records
     for var in vcf_file.fetch():
