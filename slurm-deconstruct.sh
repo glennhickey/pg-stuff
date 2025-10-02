@@ -34,7 +34,7 @@ cat ${OUTPUT_DIR}/*.fa.nesting.tsv > ${OUTPUT_FA}.nesting.tsv
 
 for VG in ${VG_DIR}/*.vg; do
     BASE=$(basename $VG)
-    if [[ $BASE == "chrY.vg" || $BASE == "chrM.vg" || $BASE == "chrOther.vg" || $BASE == "chrEBV.vg" ]]; then
+    if [[ $BASE == "chrX.vg" || $BASE == "chrY.vg" || $BASE == "chrM.vg" || $BASE == "chrOther.vg" || $BASE == "chrEBV.vg" ]]; then
 	BASE=${BASE::-3}
 	VCF=${OUTPUT_DIR}/${BASE}.${REF}.${L}.vcf.gz
 	CHR1_VCF=${OUTPUT_DIR}/chr1.${REF}.${L}.vcf.gz
