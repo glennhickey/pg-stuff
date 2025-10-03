@@ -20,11 +20,13 @@ rm -rf ${OUTPUT_DIR}/*.vcf*
 
 for VG in ${VG_DIR}/*.vg; do
     BASE=$(basename $VG)
-    BASE=${BASE::-3}
-    VCF=${OUTPUT_DIR}/${BASE}.${REF}.${L}.vcf.gz
-    FASTA=${OUTPUT_DIR}/${BASE}.${REF}.${L}.fa
-    sbatch -W ./slurm-deconstruct-one.sh $VG "-R -n -L ${L} -P ${REF} -f ${FASTA}" $VCF &
-    #./slurm-deconstruct-one.sh $VG "-n -L ${L} -P ${REF} -f ${FASTA}" $VCF &
+    if [[ $BASE != "chrEBV.vg" ]]; then
+	BASE=${BASE::-3}
+	VCF=${OUTPUT_DIR}/${BASE}.${REF}.${L}.vcf.gz
+	FASTA=${OUTPUT_DIR}/${BASE}.${REF}.${L}.fa
+	sbatch -W ./slurm-deconstruct-one.sh $VG "-R -n -L ${L} -P ${REF} -f ${FASTA}" $VCF &
+	#./slurm-deconstruct-one.sh $VG "-n -L ${L} -P ${REF} -f ${FASTA}" $VCF &
+    fi
 done
 
 wait
