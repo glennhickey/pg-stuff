@@ -40,7 +40,13 @@ def main(command_line=None):
             af = round(max(var.info['AF']), 5)
         else:
             af = 0
-        delta = max(abs(lens[a]-lens[0]) for a in range(1,len(lens)))
+        ref_len = lens[0]
+        if var.alleles[0] == '.' and 'NR' in var.info:
+            ref_len = len(var.info['NR'])
+        alt_lens = [0]
+        if len(var.alleles) > 1:
+            alt_lens = lens[1:]       
+        delta = max(abs(alt_len - ref_len) for alt_len in alt_lens)
         if tsv_file:
             tsv_file.write(f'{var.contig}\t{int(ref)}\t{delta}\t{len(lens)}\t{af}\n')
         if delta >= args.sv_len:
