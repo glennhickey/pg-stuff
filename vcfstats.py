@@ -36,7 +36,10 @@ def main(command_line=None):
     for var in vcf_file.fetch():
         ref = var.contig.startswith(args.ref)
         lens = [len(a) for a in var.alleles]
-        af = max(var.info['AF'])
+        if 'AF' in var.info:
+            af = round(max(var.info['AF']), 5)
+        else:
+            af = 0
         delta = max(abs(lens[a]-lens[0]) for a in range(1,len(lens)))
         if tsv_file:
             tsv_file.write(f'{var.contig}\t{int(ref)}\t{delta}\t{len(lens)}\t{af}\n')
