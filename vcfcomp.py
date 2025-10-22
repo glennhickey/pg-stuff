@@ -40,6 +40,9 @@ default_truvari_options = '-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --si
 #default_truvari_options = '--pick ac --passonly -r 2000 -C 5000'
 default_vcfeval_docker = 'kockan/vcfeval_docker:v1.1'
 default_vcfeval_options = '--decompose --ref-overlap'
+default_aardvark_max_length = 100000
+default_aardvark_docker = 'quay.io/glennhickey/aardvark:v0.9.0'
+default_aardvark_options = ''
 
 def vcf_preprocess(input_vcf,
                    output_vcf,
@@ -388,7 +391,134 @@ def vcfeval_chromsplit(truvari_outdir):
         output_table[-1].append(str(indel_fn[contig]))
     
     return output_table
+
+def aardvark(truth_vcf,
+             calls_vcf,
+             ref_fasta,
+             bed_regions,
+             sample,
+             output_dir,
+             threads,
+             options,
+             docker_image):
+    """
+    Run Aardvark to do the vcf comparison
+    """
+    try:
+        os.makedirs(output_dir)
+    except:
+        pass
+    assert os.path.isdir(output_dir)
+
+    # fresh output directory
+    ve_dir = os.path.join(output_dir, 'ard')
+    if os.path.exists(ve_dir):
+        shutil.rmtree(ve_dir)
+
+    # put everything in the same place
+    for f in [truth_vcf, truth_vcf + '.tbi', calls_vcf, calls_vcf + '.tbi', ref_fasta, ref_fasta + '.fai', bed_regions]:
+        if os.path.isfile(f) and os.path.dirname(f) != output_dir:
+            subprocess.check_call(['ln', '-f', os.path.abspath(f), os.path.abspath(output_dir)])
+
+    docker_cmd = ['docker', 'run', '-it', '--rm',
+                  '-u', '{}:{}'.format(os.getuid(), os.getgid()),
+                  '-v', os.path.abspath(output_dir) + ':/data', docker_image]
+        
+    # run aardvark 
+    aardvark_cmd = ['aardvark', 'compare',
+                   '-t', '/data/' + os.path.basename(truth_vcf),
+                   '-q', '/data/' + os.path.basename(calls_vcf),                 
+                   '-b', '/data/' + os.path.basename(bed_regions),
+                   '-r', '/data/' + os.path.basename(ref_fasta),
+                   '--threads', str(threads),
+                   '-o', '/data/' + os.path.basename(ve_dir)]
+    if options:
+        aardvark_cmd += options.split()
+    subprocess.check_call(docker_cmd + aardvark_cmd)
+
+    subprocess.check_call('mv {}/* {}'.format(ve_dir, output_dir), shell=True)
+    shutil.rmtree(ve_dir)
     
+def aardvark_chromsplit(aardvark_outdir):
+    """ breakdown the aardvark vcfs into a per-chromosome table"""
+
+    snp_fp = defaultdict(int)
+    snp_fn = defaultdict(int)
+    indel_fp = defaultdict(int)
+    indel_fn = defaultdict(int)
+    sv_snp_fp = defaultdict(int)
+    sv_snp_fn = defaultdict(int)
+    sv_indel_fp = defaultdict(int)
+    sv_indel_fn = defaultdict(int)
+    
+    def is_snp(var):
+        """ note: this isn't very sophisticated and may differe from hap.py's sense quite a bit """
+        return all(len(a) == len(var.alleles[0]) for a in var.alleles)
+    def is_sv(var):
+        """ this either """
+        return any(len(a) >= 50 for a in var.alleles)
+    
+    fp_vcf = os.path.join(aardvark_outdir, 'query.vcf.gz')
+    fp_vcf_file = pysam.VariantFile(fp_vcf, 'r')
+    contigs = set(['_total_'])
+    for var in fp_vcf_file.fetch():
+        assert len(var.samples.values()) == 1
+        sample = var.samples.values()[0]
+        if sample['BD'] == 'FP':            
+            contigs.add(var.contig)
+            if is_sv(var):
+                snp_dict = sv_snp_fp
+                indel_dict = sv_indel_fp
+            else:
+                snp_dict = snp_fp
+                indel_dict = indel_fp
+            if is_snp(var):
+                snp_dict[var.contig] += 1
+                snp_dict['_total_'] += 1
+            else:
+                indel_dict[var.contig] += 1
+                indel_dict['_total_'] += 1
+    fp_vcf_file.close()
+
+    fn_vcf = os.path.join(aardvark_outdir, 'truth.vcf.gz')
+    fn_vcf_file = pysam.VariantFile(fn_vcf, 'r')
+    contigs = set(['_total_'])
+    for var in fn_vcf_file.fetch():
+        assert len(var.samples.values()) == 1
+        sample = var.samples.values()[0]
+        if sample['BD'] == 'FN':            
+            contigs.add(var.contig)
+            if is_sv(var):
+                snp_dict = sv_snp_fn
+                indel_dict = sv_indel_fn
+            else:
+                snp_dict = snp_fn
+                indel_dict = indel_fn
+            if is_snp(var):
+                snp_dict[var.contig] += 1
+                snp_dict['_total_'] += 1
+            else:
+                indel_dict[var.contig] += 1
+                indel_dict['_total_'] += 1
+    fn_vcf_file.close()
+
+    output_table = [['type'] + sorted(contigs)]
+    output_table += [['ERRORS'], ['SNP-FP'], ['SNP-FN'], ['INDEL-FP'], ['INDEL-FN'],
+                     ['SV-SNP-FP'], ['SV-SNP-FN'], ['SV-INDEL-FP'], ['SV-INDEL-FN']]
+    for contig in sorted(contigs):
+        output_table[-9].append(str(snp_fp[contig] + snp_fn[contig] + indel_fp[contig] + indel_fn[contig] +
+                                    sv_snp_fp[contig] + sv_snp_fn[contig] + sv_indel_fp[contig] + sv_indel_fn[contig]))
+        output_table[-8].append(str(snp_fp[contig]))
+        output_table[-7].append(str(snp_fn[contig]))
+        output_table[-6].append(str(indel_fp[contig]))
+        output_table[-5].append(str(indel_fn[contig]))
+        output_table[-4].append(str(sv_snp_fp[contig]))
+        output_table[-3].append(str(sv_snp_fn[contig]))
+        output_table[-2].append(str(sv_indel_fp[contig]))
+        output_table[-1].append(str(sv_indel_fn[contig]))        
+    
+    return output_table
+
 def download_q100(dict_only=False):
     """
     Get all the benchmark data needed for the draft HG002 Q100 benchmarks
@@ -501,7 +631,7 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
 
         if 'vcfeval' in eval_type:
             vcfeval_out_dir = os.path.join(out_dir, 'vcfeval-' + os.path.basename(vcf.replace('.vcf.gz','')))
-            # run hap.py preprocessing
+            # run vcfeval preprocessing
             hap_calls = os.path.join(vcfeval_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.hap.vcf.gz')))            
             vcf_preprocess(vcf,
                            hap_calls,
@@ -512,7 +642,7 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
                            max_length,
                            False,
                            True)        
-            # run hap.py
+            # run vcfeval
             vcfeval(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
                     hap_calls,
                     name_dict['hg38' if is_grch38 else 'hs1'],
@@ -523,8 +653,36 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
                     vcfeval_options,
                     default_vcfeval_docker)
 
-            # run hap.py postprocessing
+            # run vcfeval postprocessing
             results_table[os.path.basename(vcfeval_out_dir)] = vcfeval_chromsplit(vcfeval_out_dir)
+
+        if 'aardvark' in eval_type:
+            vcfeval_out_dir = os.path.join(out_dir, 'aardvark-' + os.path.basename(vcf.replace('.vcf.gz','')))
+            # run aardvark preprocessing
+            hap_calls = os.path.join(vcfeval_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.hap.vcf.gz')))            
+            vcf_preprocess(vcf,
+                           hap_calls,
+                           name_dict['hg38' if is_grch38 else 'hs1'],
+                           not is_grch38,
+                           True,
+                           'HG002',
+                           max_length,
+                           False,
+                           True)        
+            # run aardvark
+            aardvark(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
+                     hap_calls,
+                     name_dict['hg38' if is_grch38 else 'hs1'],
+                     name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'benchmark.bed')],
+                     'HG002',
+                     vcfeval_out_dir,
+                     threads,
+                     vcfeval_options,
+                     default_vcfeval_docker)
+
+            # run aardvark postprocessing
+            results_table[os.path.basename(aardvark_out_dir)] = aardvark_chromsplit(aardvark_out_dir)
+            
 
     for et in eval_type:
         with open(os.path.join(out_dir, '{}.tsv'.format(et)), 'w') as et_file:
@@ -622,6 +780,36 @@ def main(command_line=None):
     vcfeval_breakdown_parser = subparsers.add_parser('vcfeval-breakdown', help='Make chromosome-decomposed table of vcfeval results')
     vcfeval_breakdown_parser.add_argument('--dir', required=True,
                                         help='vcfeval output directory')
+
+    aardvark_parser = subparsers.add_parser('aardvark', help='Run aardvark')
+    aardvark_parser.add_argument('--truth', required=True,
+                                 help='true VCF')
+    aardvark_parser.add_argument('--calls', required=True,
+                                 help='calls VCF')
+    aardvark_parser.add_argument('--ref', required=True,
+                                 help='reference fasta (or save time by passing in a .SDF from rtg format)')
+    aardvark_parser.add_argument('--regions', required=True,
+                                 help='BED regions to evaluate')
+    aardvark_parser.add_argument('--out-dir', required=True,
+                                 help='output directory')
+    aardvark_parser.add_argument('--max-length', type=int, default=default_aardvark_max_length,
+                                help='ignore sites with alleles longer than this')        
+    aardvark_parser.add_argument('--sample',
+                                 help='subset to this sample')
+    aardvark_parser.add_argument('--docker', default=default_aardvark_docker,
+                                 help='use this docker image instead of the default')
+    aardvark_parser.add_argument('--threads', type=int, default=8,
+                                 help='number of threads (default=8)')    
+    aardvark_parser.add_argument('--options', default=default_aardvark_options,
+                                 help='use these options instead of the default (surround in quotes)')
+    aardvark_parser.add_argument('--haploid-x', action='store_true',
+                                 help='make sure chrX is haploid')    
+    aardvark_parser.add_argument('--exclude-y', action='store_true',
+                                 help='completely ignore chrY')
+
+    aardvark_breakdown_parser = subparsers.add_parser('aardvark-breakdown', help='Make chromosome-decomposed table of aardvark results')
+    aardvark_breakdown_parser.add_argument('--dir', required=True,
+                                           help='aardvark output directory')
     
     hg002_q100_download_parser = subparsers.add_parser('download-q100', help='Download all HG002 t2t-q100 truth set files')
 
@@ -651,7 +839,7 @@ def main(command_line=None):
 
     args = parser.parse_args(command_line)
 
-    if args.command in ['happy', 'truvari', 'vcfeval']:
+    if args.command in ['happy', 'truvari', 'vcfeval', 'aardvark']:
         if not os.path.isdir(args.out_dir):
             os.makedirs(args.out_dir)
 
@@ -718,7 +906,27 @@ def main(command_line=None):
         vcfeval(args.truth, hap_calls, args.ref, args.regions, args.sample, args.out_dir,
                 threads = args.threads,
                 options=args.options,
-                docker_image = args.docker)        
+                docker_image = args.docker)
+
+    if args.command == 'aardvark':
+        assert not args.ref.endswith('.gz')
+        # run some preprocessing (only on calls -- assume truth from giab is ready to go)
+        hap_calls = os.path.join(args.out_dir, os.path.basename(args.calls.replace('.vcf.gz', '.hap.vcf.gz')))        
+        vcf_preprocess(args.calls,
+                       hap_calls,
+                       args.ref,
+                       args.exclude_y,
+                       args.haploid_x,
+                       args.sample,
+                       args.max_length,
+                       False,
+                       True)
+        
+        # run aardvark
+        aardvark(args.truth, hap_calls, args.ref, args.regions, args.sample, args.out_dir,
+                 threads = args.threads,
+                 options=args.options,
+                 docker_image = args.docker)        
 
     elif args.command == 'happy-breakdown':
         table = happy_chromsplit(args.vcf)
@@ -734,6 +942,11 @@ def main(command_line=None):
         table = vcfeval_chromsplit(args.dir)
         for row in table:
             print('\t'.join(row))
+
+    elif args.command == 'aardvark-breakdown':
+        table = aardvark_chromsplit(args.dir)
+        for row in table:
+            print('\t'.join(row))            
             
     elif args.command == 'download-q100':
         download_q100()
