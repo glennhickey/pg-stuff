@@ -41,8 +41,9 @@ default_truvari_options = '-O 0.0 -r 1000 -p 0.0 -P 0.3 -C 1000 -s 50 -S 15 --si
 default_vcfeval_docker = 'kockan/vcfeval_docker:v1.1'
 default_vcfeval_options = '--decompose --ref-overlap'
 default_aardvark_max_length = 100000
+default_aardvark_min_length = 0
 default_aardvark_docker = 'quay.io/glennhickey/aardvark:v0.9.0'
-default_aardvark_options = ''
+default_aardvark_options = '--enable-haplotype-metrics --enable-weighted-haplotype-metrics --enable-record-basepair-metrics'
 
 def vcf_preprocess(input_vcf,
                    output_vcf,
@@ -50,6 +51,7 @@ def vcf_preprocess(input_vcf,
                    remove_y,
                    haploid_x,
                    sample,
+                   min_length,
                    max_length,
                    bi_allelic,
                    normalize):
@@ -67,8 +69,8 @@ def vcf_preprocess(input_vcf,
 
     tmp_vcf = output_vcf.replace('.vcf', '.c1.vcf'.format('.' + sample if sample else ''))
     view_cmd = ['bcftools', 'view', input_vcf, '-c', '1', '-Oz']
-    if max_length:
-        view_cmd += ['-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {}'.format(max_length, max_length)]
+    assert max_length is not None and min_length is not None
+    view_cmd += ['-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {} && (STRLEN(REF) >= {} || STRLEN(ALT) >= {})'.format(max_length, max_length, min_length, min_length)]
     if sample:
         view_cmd += ['-as', sample]
     with open(tmp_vcf, 'w') as tmp_vcf_file:
@@ -560,8 +562,8 @@ def download_q100(dict_only=False):
         #name_dict['hg38'] = 'GCA_000001405.15_GRCh38_no_alt_analysis_set_maskedGRC_exclusions_v2.fasta'
     return name_dict
                                  
-def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, eval_type,
-              happy_options, truvari_options, vcfeval_options):
+def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, min_length, max_length, threads, eval_type,
+              happy_options, truvari_options, vcfeval_options, aardvark_options):
     """ run q100 hap.py and truvari evaluation on set of input vcfs and
     tabulate the results """
 
@@ -585,6 +587,7 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
                            not is_grch38,
                            True,
                            'HG002',
+                           min_length,
                            max_length,
                            False,
                            True)        
@@ -612,7 +615,8 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
                            not is_grch38,
                            True,
                            'HG002',
-                           None,
+                           min_length,
+                           max_length,
                            True,
                            True)
         
@@ -639,9 +643,10 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
                            not is_grch38,
                            True,
                            'HG002',
+                           min_length,
                            max_length,
                            False,
-                           True)        
+                           True)
             # run vcfeval
             vcfeval(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
                     hap_calls,
@@ -657,32 +662,33 @@ def eval_q100(out_dir, grch38_vcfs, chm13_vcfs, download, max_length, threads, e
             results_table[os.path.basename(vcfeval_out_dir)] = vcfeval_chromsplit(vcfeval_out_dir)
 
         if 'aardvark' in eval_type:
-            vcfeval_out_dir = os.path.join(out_dir, 'aardvark-' + os.path.basename(vcf.replace('.vcf.gz','')))
+            aardvark_out_dir = os.path.join(out_dir, 'aardvark-' + os.path.basename(vcf.replace('.vcf.gz','')))
             # run aardvark preprocessing
-            hap_calls = os.path.join(vcfeval_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.hap.vcf.gz')))            
+            hap_calls = os.path.join(aardvark_out_dir, os.path.basename(vcf.replace('.vcf.gz', '.hap.vcf.gz')))
             vcf_preprocess(vcf,
                            hap_calls,
                            name_dict['hg38' if is_grch38 else 'hs1'],
                            not is_grch38,
                            True,
                            'HG002',
-                           max_length,
+                           min_length,
+                           default_aardvark_max_length,
                            False,
-                           True)        
+                           True)
             # run aardvark
-            aardvark(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'vcf.gz')],
+            # note we compare all variants here
+            aardvark(name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'stvar', 'vcf.gz')],
                      hap_calls,
                      name_dict['hg38' if is_grch38 else 'hs1'],
-                     name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'smvar', 'benchmark.bed')],
+                     name_dict[('GRCh38' if is_grch38 else 'CHM13v2.0', 'stvar', 'benchmark.bed')],
                      'HG002',
-                     vcfeval_out_dir,
+                     aardvark_out_dir,
                      threads,
-                     vcfeval_options,
-                     default_vcfeval_docker)
+                     aardvark_options,
+                     default_aardvark_docker)
 
             # run aardvark postprocessing
             results_table[os.path.basename(aardvark_out_dir)] = aardvark_chromsplit(aardvark_out_dir)
-            
 
     for et in eval_type:
         with open(os.path.join(out_dir, '{}.tsv'.format(et)), 'w') as et_file:
@@ -792,8 +798,10 @@ def main(command_line=None):
                                  help='BED regions to evaluate')
     aardvark_parser.add_argument('--out-dir', required=True,
                                  help='output directory')
+    aardvark_parser.add_argument('--min-length', type=int, default=default_aardvark_min_length,
+                                help='ignore sites with alleles shorter than this')
     aardvark_parser.add_argument('--max-length', type=int, default=default_aardvark_max_length,
-                                help='ignore sites with alleles longer than this')        
+                                help='ignore sites with alleles longer than this')            
     aardvark_parser.add_argument('--sample',
                                  help='subset to this sample')
     aardvark_parser.add_argument('--docker', default=default_aardvark_docker,
@@ -818,6 +826,8 @@ def main(command_line=None):
                                         help='automatically download benchmark data into current directory')
     hg002_q100_eval_parser.add_argument('--out-dir',  required=True,
                                         help='automatically download benchmark data into current directory')
+    hg002_q100_eval_parser.add_argument('--min-length', type=int, default=default_aardvark_min_length,
+                                        help='ignore sites with alleles shorter than this')    
     hg002_q100_eval_parser.add_argument('--max-length', type=int, default=default_happy_max_length,
                                         help='ignore sites with alleles longer than this (does not apply to truvari)')
     hg002_q100_eval_parser.add_argument('--threads', type=int, default=8,
@@ -827,15 +837,16 @@ def main(command_line=None):
     hg002_q100_eval_parser.add_argument('--chm13-vcfs', nargs='*', default=[],
                                         help='vcfs for HG002-T2T-Q100-GRCh38 evaluation')
     hg002_q100_eval_parser.add_argument('--eval-type', nargs='+', default=['vcfeval', 'truvari'],
-                                        choices = ['happy', 'truvari', 'vcfeval'],
-                                        help='evaluation to run in {happy, truvari, vcfeval}, multiple allowed')
+                                        choices = ['happy', 'truvari', 'vcfeval', 'aardvark', 'aardvark-sv'],
+                                        help='evaluation to run in {happy, truvari, vcfeval, aardvark, aardvark-sv}, multiple allowed')
     hg002_q100_eval_parser.add_argument('--happy-options', default=default_happy_options,
                                         help='use these options instead of the default (surround in quotes)')    
     hg002_q100_eval_parser.add_argument('--truvari-options', default=default_truvari_options,
                                         help='use these options instead of the default (surround in quotes)')
     hg002_q100_eval_parser.add_argument('--vcfeval-options', default=default_vcfeval_options,
                                         help='use these options instead of the default (surround in quotes)')
-    
+    hg002_q100_eval_parser.add_argument('--aardvark-options', default=default_aardvark_options,
+                                        help='use these options instead of the default (surround in quotes)')        
 
     args = parser.parse_args(command_line)
 
@@ -860,6 +871,7 @@ def main(command_line=None):
                        args.exclude_y,
                        args.haploid_x,
                        args.sample,
+                       0,
                        args.max_length,
                        True,
                        True)
@@ -879,7 +891,8 @@ def main(command_line=None):
                        args.exclude_y,
                        args.haploid_x,
                        args.sample,
-                       None,
+                       default_aardvark_min_length,
+                       default_aardvark_max_length,
                        True,
                        True)
 
@@ -898,6 +911,7 @@ def main(command_line=None):
                        args.exclude_y,
                        args.haploid_x,
                        args.sample,
+                       0,
                        args.max_length,
                        False,
                        True)
@@ -918,6 +932,7 @@ def main(command_line=None):
                        args.exclude_y,
                        args.haploid_x,
                        args.sample,
+                       args.min_length,
                        args.max_length,
                        False,
                        True)
@@ -956,12 +971,14 @@ def main(command_line=None):
                   args.grch38_vcfs,
                   args.chm13_vcfs,
                   args.download,
+                  args.min_length,
                   args.max_length,
                   args.threads,
                   args.eval_type,
                   args.happy_options,
                   args.truvari_options,
-                  args.vcfeval_options)
+                  args.vcfeval_options,
+                  args.aardvark_options)
 
             
 if __name__ == '__main__':
