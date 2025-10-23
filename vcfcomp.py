@@ -70,12 +70,14 @@ def vcf_preprocess(input_vcf,
     tmp_vcf = output_vcf.replace('.vcf', '.c1.vcf'.format('.' + sample if sample else ''))
     view_cmd = ['bcftools', 'view', input_vcf, '-c', '1', '-Oz']
     assert max_length is not None and min_length is not None
-    view_cmd += ['-i', 'STRLEN(REF) <= {} && STRLEN(ALT) <= {} && (STRLEN(REF) >= {} || STRLEN(ALT) >= {})'.format(max_length, max_length, min_length, min_length)]
+    view_cmd += ['-i', '"STRLEN(REF) <= {} && STRLEN(ALT) <= {} && (STRLEN(REF) >= {} || STRLEN(ALT) >= {})"'.format(max_length, max_length, min_length, min_length)]
     if sample:
         view_cmd += ['-as', sample]
+    # remove tags for aardvark
+    view_cmd = ' '.join(view_cmd) + ' | bcftools annotate -x "INFO/TYPE,INFO/LEN,INFO/ORIGIN,INFO/INV"'
     with open(tmp_vcf, 'w') as tmp_vcf_file:
-        sys.stderr.write('Running vcf preprocessing: {}\n'.format(' '.join(view_cmd)))
-        subprocess.check_call(view_cmd, stdout=tmp_vcf_file)    
+        sys.stderr.write('Running vcf preprocessing: {}\n'.format(view_cmd))
+        subprocess.check_call(view_cmd, stdout=tmp_vcf_file, shell=True)    
     if bi_allelic:
         sys.stderr.write('Splitting into bi-allelic variants\n')
         norm_vcf = tmp_vcf.replace('.vcf', '.biallelic.vcf')
@@ -428,12 +430,13 @@ def aardvark(truth_vcf,
         
     # run aardvark 
     aardvark_cmd = ['aardvark', 'compare',
-                   '-t', '/data/' + os.path.basename(truth_vcf),
-                   '-q', '/data/' + os.path.basename(calls_vcf),                 
-                   '-b', '/data/' + os.path.basename(bed_regions),
-                   '-r', '/data/' + os.path.basename(ref_fasta),
-                   '--threads', str(threads),
-                   '-o', '/data/' + os.path.basename(ve_dir)]
+                    '-t', '/data/' + os.path.basename(truth_vcf),
+                    '-q', '/data/' + os.path.basename(calls_vcf),                 
+                    '-b', '/data/' + os.path.basename(bed_regions),
+                    '-r', '/data/' + os.path.basename(ref_fasta),
+                    '--threads', str(threads),
+                    '-o', '/data/' + os.path.basename(ve_dir),
+                    '--compare-label', os.path.basename(calls_vcf)]
     if options:
         aardvark_cmd += options.split()
     subprocess.check_call(docker_cmd + aardvark_cmd)
