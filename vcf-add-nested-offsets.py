@@ -22,15 +22,16 @@ def main(command_line=None):
                         help='Input FASTA (from vg decontruct -f)')
     parser.add_argument('--keep-dots', action='store_true', default=False,
                         help='Do not convert dots to underscores in contig names (warning pangenie\'s prepare script needs this)')
-    parser.add_argument('--renamed-fasta', 
+    parser.add_argument('--renamed-fasta',
                         help='Output renamed fasta file')
+    parser.add_argument('--vcf-only', action='store_true', default=False,
+                        help='Only write FASTA contigs that are represented in the VCF')
     options = parser.parse_args(command_line)
 
     # get all the contig (intervals) from the FASTA and index them
     contig_dict = {}
+    fasta_records = []
     f = gzip.open(options.fasta, 'rb') if options.fasta.endswith('.gz') else open(options.fasta, 'r')
-    if options.renamed_fasta:
-        fo = gzip.open(options.renamed_fasta, 'wb') if options.renamed_fasta.endswith('.gz') else open(options.renamed_fasta, 'w')
     num_records = 0
     for record in SeqIO.parse(f, 'fasta'):
         if '[' in record.id and record.id.endswith(']'):
@@ -44,18 +45,41 @@ def main(command_line=None):
             contig_dict[contig_name] = interval_tree
             num_records += 1
         if options.renamed_fasta:
-            if not options.keep_dots:
-                record.id = record.id.replace('.', '_')
-            record.id = record.id.replace('[', '_').replace(']', '')
-            record.description = ''
-            SeqIO.write(record, fo, 'fasta')
+            fasta_records.append(record)
     f.close()
-    if options.renamed_fasta:
-        fo.close()
-            
+
     sys.stderr.write(f'found {num_records} intervals in {len(contig_dict)} base contigs\n')
     
-    # print the corrected VCF header
+    # first pass: scan VCF to collect used contigs (if --vcf-only is set)
+    used_contig_ids = set()
+    if options.vcf_only:
+        sys.stderr.write('scanning VCF to collect used contigs...\n')
+        vcf_file = pysam.VariantFile(options.vcf, 'rb' if options.vcf.endswith('.gz') else 'r')
+        for var in vcf_file.fetch():
+            if var.contig in contig_dict:
+                intervals = list(contig_dict[var.contig].at(var.pos))
+                if intervals:
+                    # take largest interval
+                    ilens = [(i.end - i.begin) for i in intervals]
+                    interval = intervals[ilens.index(max(ilens))]
+                    used_contig_ids.add(interval.data)
+        vcf_file.close()
+        sys.stderr.write(f'found {len(used_contig_ids)} contigs used in VCF\n')
+
+    # write the renamed FASTA file if requested
+    if options.renamed_fasta:
+        fo = gzip.open(options.renamed_fasta, 'wb') if options.renamed_fasta.endswith('.gz') else open(options.renamed_fasta, 'w')
+        for record in fasta_records:
+            # only write this record if --vcf-only is not set, or if it's used in the VCF
+            if not options.vcf_only or record.id in used_contig_ids:
+                if not options.keep_dots:
+                    record.id = record.id.replace('.', '_')
+                record.id = record.id.replace('[', '_').replace(']', '').replace('-', '_')
+                record.description = ''
+                SeqIO.write(record, fo, 'fasta')
+        fo.close()
+
+    # second pass: print the corrected VCF header and records
     vcf_file = pysam.VariantFile(options.vcf, 'rb' if options.vcf.endswith('.gz') else 'r')
     header = str(vcf_file.header)
     for line in header.split('\n'):
@@ -64,23 +88,25 @@ def main(command_line=None):
             fixed_contig = contig if options.keep_dots else contig.replace('.', '_')
             if contig in contig_dict:
                 for interval in contig_dict[contig]:
-                    print(f'##contig=<ID={fixed_contig}_{interval.begin}-{interval.end},length={interval.end-interval.begin}>')
+                    # only write this contig if --vcf-only is not set, or if it's used in the VCF
+                    if not options.vcf_only or interval.data in used_contig_ids:
+                        print(f'##contig=<ID={fixed_contig}_{interval.begin}_{interval.end},length={interval.end-interval.begin}>')
             else:
                 sys.stderr.write(f'contig {contig} not in header\n')
                 line = line.replace('[', '_').replace(']', '_')
                 print(line if options.keep_dots else line.replace('.', '_'))
         elif len(line.strip()) > 1:
             print(line.strip())
-            
+
     # print the corrected records
     for var in vcf_file.fetch():
         if var.contig in contig_dict:
             intervals = list(contig_dict[var.contig].at(var.pos))
             # todo: should we merge these?
-            # take biggest interval
+            # take largest interval
             ilens = [(i.end - i.begin) for i in intervals]
-            interval = intervals[ilens.index(min(ilens))]
-            var_str = '\t'.join([f'{var.contig}_{interval.begin}-{interval.end}',
+            interval = intervals[ilens.index(max(ilens))]
+            var_str = '\t'.join([f'{var.contig}_{interval.begin}_{interval.end}',
                                  str(var.pos - interval.begin)] + str(var).split('\t')[2:])
         else:
             var_str = str(var)
